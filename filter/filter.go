@@ -1,4 +1,4 @@
-package impersonation
+package filter
 
 import (
 	"context"
