@@ -172,7 +172,7 @@ func (s *tokenAPIServer) getK8sTokenCR(tokenID string) (*v3.Token, error) {
 //GetTokens will list all derived tokens of the authenticated user - only derived
 func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 	logrus.Debug("LIST Tokens Invoked")
-	var tokens []v3.Token
+	tokens := make([]v3.Token, 0)
 
 	storedToken, err := s.tokensClient.Get(tokenID, metav1.GetOptions{})
 	if err != nil {

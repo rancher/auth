@@ -22,13 +22,16 @@ func init() {
 type PrincipalProvider interface {
 	GetName() string
 	AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, int, error)
+	SearchPrincipals(name string, myToken v3.Token) ([]v3.Principal, int, error)
 }
 
 func Configure(ctx context.Context, mgmtCtx *config.ManagementContext) {
-	for _, name := range providerOrderList {
-		switch name {
-		case "local":
-			providers[name] = local.Configure(ctx, mgmtCtx)
+	for _, providerName := range providerOrderList {
+		if _, exists := providers[providerName]; !exists {
+			switch providerName {
+			case "local":
+				providers[providerName] = local.Configure(ctx, mgmtCtx)
+			}
 		}
 	}
 }
@@ -39,11 +42,29 @@ func AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, in
 	var status int
 	var err error
 
-	for _, name := range providerOrderList {
-		switch name {
+	for _, providerName := range providerOrderList {
+		switch providerName {
 		case "local":
-			userPrincipal, groupPrincipals, status, err = providers[name].AuthenticateUser(jsonInput)
+			userPrincipal, groupPrincipals, status, err = providers[providerName].AuthenticateUser(jsonInput)
 		}
 	}
 	return userPrincipal, groupPrincipals, status, err
+}
+
+func SearchPrincipals(name string, myToken v3.Token) ([]v3.Principal, int, error) {
+	principals := make([]v3.Principal, 0)
+	var status int
+	var err error
+
+	for _, providerName := range providerOrderList {
+		switch providerName {
+		case "local":
+			localprincipals, status, err := providers[providerName].SearchPrincipals(name, myToken)
+			if err != nil {
+				return localprincipals, status, err
+			}
+			principals = append(principals, localprincipals...)
+		}
+	}
+	return principals, status, err
 }
