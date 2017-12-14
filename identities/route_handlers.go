@@ -18,7 +18,7 @@ func (server *identityAPIServer) listIdentities(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	log.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
+	log.Infof("listIdentities: token cookie: %v %v", cookie.Name, cookie.Value)
 
 	//getIdentities
 	identities, status, err := server.getIdentities(cookie.Value)
@@ -44,7 +44,7 @@ func (server *identityAPIServer) searchIdentities(w http.ResponseWriter, r *http
 		return
 	}
 
-	log.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
+	log.Infof("searchIdentities: token cookie: %v %v", cookie.Name, cookie.Value)
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {

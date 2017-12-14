@@ -3,48 +3,53 @@ package identities
 import (
 	"context"
 	"fmt"
-	//log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/rancher/types/config"
+
+	"github.com/rancher/auth/providers"
 )
 
 type identityAPIServer struct {
 	ctx              context.Context
 	client           *config.ManagementContext
 	identitiesClient v3.IdentityInterface
+	tokensClient     v3.TokenInterface
 }
 
 func newIdentityAPIServer(ctx context.Context, mgmtCtx *config.ManagementContext) (*identityAPIServer, error) {
 	if mgmtCtx == nil {
 		return nil, fmt.Errorf("Failed to build tokenAPIHandler, nil ManagementContext")
 	}
+	providers.Configure(ctx, mgmtCtx)
+
 	apiServer := &identityAPIServer{
 		ctx:              ctx,
 		client:           mgmtCtx,
 		identitiesClient: mgmtCtx.Management.Identities(""),
+		tokensClient:     mgmtCtx.Management.Tokens(""),
 	}
 	return apiServer, nil
 }
 
 func (s *identityAPIServer) getIdentities(tokenKey string) ([]v3.Identity, int, error) {
-	var identities []v3.Identity
+	identities := make([]v3.Identity, 0)
 
-	/*token, status, err := GetToken(tokenKey)
+	log.Debugf("getIdentities: token cookie: %v", tokenKey)
+
+	token, err := s.getTokenCR(tokenKey)
 
 	if err != nil {
 		return identities, 401, err
-	} else {
-		identities = append(identities, token.UserIdentity)
-		identities = append(identities, token.GroupIdentities...)
+	}
 
-		return identities, status, nil
-	}*/
-
-	identities = append(identities, getUserIdentity())
-	identities = append(identities, getGroupIdentities()...)
+	//add code to make sure token is valid
+	identities = append(identities, token.UserIdentity)
+	identities = append(identities, token.GroupIdentities...)
 
 	return identities, 0, nil
 
@@ -52,75 +57,30 @@ func (s *identityAPIServer) getIdentities(tokenKey string) ([]v3.Identity, int, 
 
 func (s *identityAPIServer) findIdentities(tokenKey string, name string) ([]v3.Identity, int, error) {
 	var identities []v3.Identity
+	var status int
+	log.Debugf("searchIdentities: token cookie: %v, name: %v", tokenKey, name)
 
-	/*token, status, err := GetToken(tokenKey)
-
+	token, err := s.getTokenCR(tokenKey)
 	if err != nil {
 		return identities, 401, err
-	} else {
-		identities = append(identities, token.UserIdentity)
-		identities = append(identities, token.GroupIdentities...)
+	}
+	identities, status, err = providers.SearchIdentities(name, *token)
 
-		return identities, status, nil
-	}*/
-
-	identities = append(identities, getUserIdentity())
-	identities = append(identities, getGroupIdentities()...)
-
-	return identities, 0, nil
-
+	return identities, status, err
 }
 
-func getUserIdentity() v3.Identity {
+func (s *identityAPIServer) getTokenCR(tokenID string) (*v3.Token, error) {
+	if s.client != nil {
+		storedToken, err := s.tokensClient.Get(strings.ToLower(tokenID), metav1.GetOptions{})
 
-	identity := v3.Identity{
-		LoginName:      "dummy",
-		DisplayName:    "Dummy User",
-		ProfilePicture: "",
-		ProfileURL:     "",
-		Kind:           "user",
-		Me:             true,
-		MemberOf:       false,
+		if err != nil {
+			log.Info("Failed to get token resource: %v", err)
+			return nil, fmt.Errorf("Failed to retrieve auth token")
+		}
+
+		log.Debugf("storedToken token resource: %v", storedToken)
+
+		return storedToken, nil
 	}
-	identity.ObjectMeta = metav1.ObjectMeta{
-		Name: "ldap_cn=dummy,dc=tad,dc=rancher,dc=io",
-	}
-
-	return identity
-}
-
-func getGroupIdentities() []v3.Identity {
-
-	var identities []v3.Identity
-
-	identity1 := v3.Identity{
-		DisplayName:    "Admin group",
-		LoginName:      "Administrators",
-		ProfilePicture: "",
-		ProfileURL:     "",
-		Kind:           "group",
-		Me:             false,
-		MemberOf:       true,
-	}
-	identity1.ObjectMeta = metav1.ObjectMeta{
-		Name: "ldap_cn=group1,dc=tad,dc=rancher,dc=io",
-	}
-
-	identity2 := v3.Identity{
-		DisplayName:    "Dev group",
-		LoginName:      "Developers",
-		ProfilePicture: "",
-		ProfileURL:     "",
-		Kind:           "group",
-		Me:             false,
-		MemberOf:       true,
-	}
-	identity2.ObjectMeta = metav1.ObjectMeta{
-		Name: "ldap_cn=group2,dc=tad,dc=rancher,dc=io",
-	}
-
-	identities = append(identities, identity1)
-	identities = append(identities, identity2)
-
-	return identities
+	return nil, fmt.Errorf("No k8s Client configured")
 }
