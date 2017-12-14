@@ -78,10 +78,6 @@ func (l *LProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Identity, []v
 	} else {
 		return userIdentity, groupIdentities, 401, fmt.Errorf("Invalid Credentials")
 	}
-
-	log.Info("List userIdentity resource: %v", userIdentity)
-	log.Info("List groupIdentities resource: %v", groupIdentities)
-
 	return userIdentity, groupIdentities, 0, nil
 }
 
@@ -98,15 +94,12 @@ func (l *LProvider) getGroupIdentities(user *v3.User) ([]v3.Identity, int, error
 		}
 
 		for _, gm := range groupMemberList.Items {
-			log.Info("List groupmember resource: %v", gm)
-
 			//find group for this member mapping
 			localGroup, err := l.Groups.Get(gm.GroupName, metav1.GetOptions{})
 			if err != nil {
 				log.Errorf("Failed to get Group resource: %v", err)
 				continue
 			}
-			log.Info("List group resource: %v", localGroup)
 			groupIdentity := v3.Identity{
 				DisplayName:    localGroup.Name,
 				LoginName:      "",

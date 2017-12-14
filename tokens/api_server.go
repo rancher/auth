@@ -41,7 +41,7 @@ func newTokenAPIServer(ctx context.Context, mgmtCtx *config.ManagementContext) (
 	return apiServer, nil
 }
 
-//CreateLoginToken will authenticate with provider and create a jwt token
+//createLoginToken will authenticate with provider and creates a token CR
 func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, int, error) {
 
 	log.Info("Create Token Invoked %v", jsonInput)
@@ -50,6 +50,7 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 	userIdentity, groupIdentities, status, err := providers.AuthenticateUser(jsonInput)
 
 	if status == 0 && err == nil {
+		log.Info("User Authenticated")
 		if s.client != nil {
 			key, err := generateKey()
 			if err != nil {
@@ -57,16 +58,7 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 				return v3.Token{}, 0, fmt.Errorf("Failed to generate token key")
 			}
 
-			//check that there is no token with this key.
-			payload := make(map[string]interface{})
-			payload["userIdentity"] = userIdentity
-			payload["groupIdentities"] = groupIdentities
-
-			tokenValue, err := createTokenWithPayload(payload, defaultSecret)
-			if err != nil {
-				log.Info("Failed to generate token value: %v", err)
-				return v3.Token{}, 0, fmt.Errorf("Failed to generate token value")
-			}
+			//check that there is no token with this key?
 
 			ttl := jsonInput.TTLMillis
 			refreshTTL := jsonInput.IdentityRefreshTTLMillis
@@ -77,13 +69,14 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 
 			k8sToken := &v3.Token{
 				TokenID:                  key,
-				TokenValue:               tokenValue, //signed jwt containing user details
+				UserIdentity:             userIdentity,
+				GroupIdentities:          groupIdentities,
 				IsDerived:                false,
 				TTLMillis:                ttl,
 				IdentityRefreshTTLMillis: refreshTTL,
 				User:         userIdentity.LoginName,
 				ExternalID:   userIdentity.ObjectMeta.Name,
-				AuthProvider: "github",
+				AuthProvider: getAuthProviderName(userIdentity.ObjectMeta.Name),
 			}
 			rToken, err := s.createK8sTokenCR(k8sToken)
 			return rToken, 0, err
@@ -122,7 +115,8 @@ func (s *tokenAPIServer) createDerivedToken(jsonInput v3.Token, tokenID string) 
 
 		k8sToken := &v3.Token{
 			TokenID:                  key,
-			TokenValue:               token.TokenValue, //signed jwt containing user details
+			UserIdentity:             token.UserIdentity,
+			GroupIdentities:          token.GroupIdentities,
 			IsDerived:                true,
 			TTLMillis:                ttl,
 			IdentityRefreshTTLMillis: refreshTTL,
@@ -173,7 +167,7 @@ func (s *tokenAPIServer) getK8sTokenCR(tokenID string) (*v3.Token, error) {
 			return nil, fmt.Errorf("Failed to retrieve auth token")
 		}
 
-		log.Info("storedToken token resource: %v", storedToken)
+		log.Debugf("storedToken token resource: %v", storedToken)
 
 		return storedToken, nil
 	}
@@ -192,7 +186,7 @@ func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 			log.Info("Failed to get token resource: %v", err)
 			return tokens, 401, fmt.Errorf("Failed to retrieve auth token")
 		}
-		log.Info("storedToken token resource: %v", storedToken)
+		log.Debugf("storedToken token resource: %v", storedToken)
 		externalID := storedToken.ExternalID
 		set := labels.Set(map[string]string{"io.cattle.token.field.externalID": externalID})
 		tokenList, err := s.tokensClient.List(metav1.ListOptions{LabelSelector: set.AsSelector().String()})
@@ -201,7 +195,6 @@ func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 		}
 
 		for _, t := range tokenList.Items {
-			log.Info("List token resource: %v", t)
 			tokens = append(tokens, t)
 		}
 		return tokens, 0, nil
