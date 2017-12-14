@@ -10,40 +10,40 @@ import (
 )
 
 //Providers map
-var Providers map[string]IdentityProvider
-var ProviderOrderList []string
+var providers map[string]PrincipalProvider
+var providerOrderList []string
 
 func init() {
-	ProviderOrderList = []string{"local"}
-	Providers = make(map[string]IdentityProvider)
+	providerOrderList = []string{"local"}
+	providers = make(map[string]PrincipalProvider)
 }
 
-//IdentityProvider interfacse defines what methods an identity provider should implement
-type IdentityProvider interface {
+//PrincipalProvider interfacse defines what methods an identity provider should implement
+type PrincipalProvider interface {
 	GetName() string
-	AuthenticateUser(jsonInput v3.LoginInput) (v3.Identity, []v3.Identity, int, error)
+	AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, int, error)
 }
 
 func Configure(ctx context.Context, mgmtCtx *config.ManagementContext) {
-	for _, name := range ProviderOrderList {
+	for _, name := range providerOrderList {
 		switch name {
 		case "local":
-			Providers[name] = local.Configure(ctx, mgmtCtx)
+			providers[name] = local.Configure(ctx, mgmtCtx)
 		}
 	}
 }
 
-func AuthenticateUser(jsonInput v3.LoginInput) (v3.Identity, []v3.Identity, int, error) {
-	var groupIdentities []v3.Identity
-	var userIdentity v3.Identity
+func AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, int, error) {
+	var groupPrincipals []v3.Principal
+	var userPrincipal v3.Principal
 	var status int
 	var err error
 
-	for _, name := range ProviderOrderList {
+	for _, name := range providerOrderList {
 		switch name {
 		case "local":
-			userIdentity, groupIdentities, status, err = Providers[name].AuthenticateUser(jsonInput)
+			userPrincipal, groupPrincipals, status, err = providers[name].AuthenticateUser(jsonInput)
 		}
 	}
-	return userIdentity, groupIdentities, status, err
+	return userPrincipal, groupPrincipals, status, err
 }

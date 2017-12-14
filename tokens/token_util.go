@@ -28,10 +28,10 @@ func generateKey() (string, error) {
 func sanitizeKey(key string) string {
 	re := regexp.MustCompile("[O0lI+/=]")
 	key = re.ReplaceAllString(key, "")
-	return strings.Trim(key, "")
+	return strings.ToLower(strings.Trim(key, ""))
 }
 
-func getAuthProviderName(externalID string) string {
-	parts := strings.Split(externalID, "_")
+func getAuthProviderName(principalID string) string {
+	parts := strings.Split(principalID, "://")
 	return parts[0]
 }

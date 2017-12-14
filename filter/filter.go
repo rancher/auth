@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/rancher/auth/authenticator"
+	"github.com/rancher/auth/util"
 	"github.com/rancher/types/config"
 	"github.com/sirupsen/logrus"
 )
@@ -28,15 +29,9 @@ type authHeaderHandler struct {
 
 func (h authHeaderHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	authed, user, groups, err := h.auth.Authenticate(req)
-	if err != nil {
-		logrus.Errorf("Error encountered while authenticating: %v", err)
-		// TODO who will handle standardizing the format of 400/500 response bodies?
-		http.Error(rw, "The server encountered a problem", 500)
+	if err != nil || !authed {
+		util.ReturnHTTPError(rw, req, 401, err.Error())
 		return
-	}
-
-	if !authed {
-		http.Error(rw, "Failed authentication", 401)
 	}
 
 	logrus.Debugf("Impersonating user %v, groups %v", user, groups)
