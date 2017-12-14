@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/gorilla/mux"
+	"github.com/rancher/auth/filter"
 	"github.com/rancher/auth/identities"
 	"github.com/rancher/auth/tokens"
 	"github.com/sirupsen/logrus"
@@ -59,6 +60,11 @@ func run(c *cli.Context) {
 		logrus.Fatalf("Failed to get NewIdentityAPIHandler handler: %v", err)
 	}
 
+	authnFilter, err := filter.NewAuthenticationFilter(nil, mgmtCtx, nil)
+	if err != nil {
+		logrus.Fatalf("Failed to get NewAuthenticationFilter handler: %v", err)
+	}
+
 	if c.GlobalBool("debug") {
 		logrus.SetLevel(logrus.DebugLevel)
 	}
@@ -75,6 +81,7 @@ func run(c *cli.Context) {
 	router := mux.NewRouter()
 	router.Handle("/v3/tokens", tokenHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
 	router.Handle("/v3/identities", identityHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3", authnFilter).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
 
 	logrus.Infof("Starting http server listening on %v.", httpHost)
 	logrus.Fatal(http.ListenAndServe(httpHost, router))

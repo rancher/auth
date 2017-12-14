@@ -2,6 +2,7 @@ package filter
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/rancher/auth/authenticator"
@@ -10,7 +11,10 @@ import (
 )
 
 func NewAuthenticationFilter(ctx context.Context, managementContext *config.ManagementContext, next http.Handler) (http.Handler, error) {
-	auth := authenticator.NewAuthenticator()
+	if managementContext == nil {
+		return nil, fmt.Errorf("Failed to build NewAuthenticationFilter, nil ManagementContext")
+	}
+	auth := authenticator.NewAuthenticator(ctx, managementContext)
 	return &authHeaderHandler{
 		auth: auth,
 		next: next,
