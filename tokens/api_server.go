@@ -177,7 +177,7 @@ func (s *tokenAPIServer) getK8sTokenCR(tokenID string) (*v3.Token, error) {
 //GetTokens will list all tokens of the authenticated user - login and derived
 func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 	log.Info("GET Token Invoked")
-	var tokens []v3.Token
+	tokens := make([]v3.Token, 0)
 
 	if s.client != nil {
 		storedToken, err := s.tokensClient.Get(strings.ToLower(tokenID), metav1.GetOptions{})
