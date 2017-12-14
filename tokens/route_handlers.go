@@ -173,29 +173,3 @@ func (server *tokenAPIServer) logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
-
-func (server *tokenAPIServer) listIdentities(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("rAuthnSessionToken")
-	if err != nil {
-		log.Info("Failed to get token cookie: %v", err)
-		util.ReturnHTTPError(w, r, http.StatusUnauthorized, "Invalid token cookie")
-		return
-	}
-
-	log.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
-
-	//getToken
-	identities, status, err := server.getIdentities(cookie.Value)
-	if err != nil {
-		log.Errorf("DeleteToken failed with error: %v", err)
-		if status == 0 {
-			status = http.StatusInternalServerError
-		}
-		util.ReturnHTTPError(w, r, status, fmt.Sprintf("%v", err))
-		return
-	}
-
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	enc.Encode(identities)
-}

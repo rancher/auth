@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
+	"github.com/rancher/auth/providers"
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/rancher/types/config"
 )
@@ -29,45 +30,35 @@ func newTokenAPIServer(ctx context.Context, mgmtCtx *config.ManagementContext) (
 	if mgmtCtx == nil {
 		return nil, fmt.Errorf("Failed to build tokenAPIHandler, nil ManagementContext")
 	}
+	providers.Configure(ctx, mgmtCtx)
+
 	apiServer := &tokenAPIServer{
 		ctx:          ctx,
 		client:       mgmtCtx,
 		tokensClient: mgmtCtx.Management.Tokens(""),
 	}
+
 	return apiServer, nil
 }
 
-//CreateLoginToken will authenticate with provider and create a jwt token
+//createLoginToken will authenticate with provider and creates a token CR
 func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, int, error) {
 
 	log.Info("Create Token Invoked %v", jsonInput)
-	authenticated := true
 
-	/* Authenticate User
-		if provider != nil {
-		token, status, err := provider.GenerateToken(json)
-		if err != nil {
-			return model.TokenOutput{}, status, err
-		}
-	}*/
+	// Authenticate User
+	userIdentity, groupIdentities, status, err := providers.AuthenticateUser(jsonInput)
 
-	if authenticated {
-
+	if status == 0 && err == nil {
+		log.Info("User Authenticated")
 		if s.client != nil {
-
 			key, err := generateKey()
 			if err != nil {
 				log.Info("Failed to generate token key: %v", err)
 				return v3.Token{}, 0, fmt.Errorf("Failed to generate token key")
 			}
 
-			//check that there is no token with this key.
-			payload := make(map[string]interface{})
-			tokenValue, err := createTokenWithPayload(payload, defaultSecret)
-			if err != nil {
-				log.Info("Failed to generate token value: %v", err)
-				return v3.Token{}, 0, fmt.Errorf("Failed to generate token value")
-			}
+			//check that there is no token with this key?
 
 			ttl := jsonInput.TTLMillis
 			refreshTTL := jsonInput.IdentityRefreshTTLMillis
@@ -78,13 +69,14 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 
 			k8sToken := &v3.Token{
 				TokenID:                  key,
-				TokenValue:               tokenValue, //signed jwt containing user details
+				UserIdentity:             userIdentity,
+				GroupIdentities:          groupIdentities,
 				IsDerived:                false,
 				TTLMillis:                ttl,
 				IdentityRefreshTTLMillis: refreshTTL,
-				User:         "dummy",
-				ExternalID:   "github_12346",
-				AuthProvider: "github",
+				User:         userIdentity.LoginName,
+				ExternalID:   userIdentity.ObjectMeta.Name,
+				AuthProvider: getAuthProviderName(userIdentity.ObjectMeta.Name),
 			}
 			rToken, err := s.createK8sTokenCR(k8sToken)
 			return rToken, 0, err
@@ -93,7 +85,7 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 		return v3.Token{}, 500, fmt.Errorf("No k8s Client configured")
 	}
 
-	return v3.Token{}, 0, fmt.Errorf("No auth provider configured")
+	return v3.Token{}, status, err
 }
 
 //CreateDerivedToken will create a jwt token for the authenticated user
@@ -123,7 +115,8 @@ func (s *tokenAPIServer) createDerivedToken(jsonInput v3.Token, tokenID string) 
 
 		k8sToken := &v3.Token{
 			TokenID:                  key,
-			TokenValue:               token.TokenValue, //signed jwt containing user details
+			UserIdentity:             token.UserIdentity,
+			GroupIdentities:          token.GroupIdentities,
 			IsDerived:                true,
 			TTLMillis:                ttl,
 			IdentityRefreshTTLMillis: refreshTTL,
@@ -174,7 +167,7 @@ func (s *tokenAPIServer) getK8sTokenCR(tokenID string) (*v3.Token, error) {
 			return nil, fmt.Errorf("Failed to retrieve auth token")
 		}
 
-		log.Info("storedToken token resource: %v", storedToken)
+		log.Debugf("storedToken token resource: %v", storedToken)
 
 		return storedToken, nil
 	}
@@ -193,7 +186,7 @@ func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 			log.Info("Failed to get token resource: %v", err)
 			return tokens, 401, fmt.Errorf("Failed to retrieve auth token")
 		}
-		log.Info("storedToken token resource: %v", storedToken)
+		log.Debugf("storedToken token resource: %v", storedToken)
 		externalID := storedToken.ExternalID
 		set := labels.Set(map[string]string{"io.cattle.token.field.externalID": externalID})
 		tokenList, err := s.tokensClient.List(metav1.ListOptions{LabelSelector: set.AsSelector().String()})
@@ -202,7 +195,6 @@ func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 		}
 
 		for _, t := range tokenList.Items {
-			log.Info("List token resource: %v", t)
 			tokens = append(tokens, t)
 		}
 		return tokens, 0, nil
@@ -227,79 +219,4 @@ func (s *tokenAPIServer) deleteToken(tokenKey string) (int, error) {
 	}
 	log.Info("Client nil %v", s.client)
 	return 500, fmt.Errorf("No k8s Client configured")
-}
-
-func (s *tokenAPIServer) getIdentities(tokenKey string) ([]v3.Identity, int, error) {
-	var identities []v3.Identity
-
-	/*token, status, err := GetToken(tokenKey)
-
-	if err != nil {
-		return identities, 401, err
-	} else {
-		identities = append(identities, token.UserIdentity)
-		identities = append(identities, token.GroupIdentities...)
-
-		return identities, status, nil
-	}*/
-
-	identities = append(identities, getUserIdentity())
-	identities = append(identities, getGroupIdentities()...)
-
-	return identities, 0, nil
-
-}
-
-func getUserIdentity() v3.Identity {
-
-	identity := v3.Identity{
-		LoginName:      "dummy",
-		DisplayName:    "Dummy User",
-		ProfilePicture: "",
-		ProfileURL:     "",
-		Kind:           "user",
-		Me:             true,
-		MemberOf:       false,
-	}
-	identity.ObjectMeta = metav1.ObjectMeta{
-		Name: "ldap_cn=dummy,dc=tad,dc=rancher,dc=io",
-	}
-
-	return identity
-}
-
-func getGroupIdentities() []v3.Identity {
-
-	var identities []v3.Identity
-
-	identity1 := v3.Identity{
-		DisplayName:    "Admin group",
-		LoginName:      "Administrators",
-		ProfilePicture: "",
-		ProfileURL:     "",
-		Kind:           "group",
-		Me:             false,
-		MemberOf:       true,
-	}
-	identity1.ObjectMeta = metav1.ObjectMeta{
-		Name: "ldap_cn=group1,dc=tad,dc=rancher,dc=io",
-	}
-
-	identity2 := v3.Identity{
-		DisplayName:    "Dev group",
-		LoginName:      "Developers",
-		ProfilePicture: "",
-		ProfileURL:     "",
-		Kind:           "group",
-		Me:             false,
-		MemberOf:       true,
-	}
-	identity2.ObjectMeta = metav1.ObjectMeta{
-		Name: "ldap_cn=group2,dc=tad,dc=rancher,dc=io",
-	}
-
-	identities = append(identities, identity1)
-	identities = append(identities, identity2)
-
-	return identities
 }
