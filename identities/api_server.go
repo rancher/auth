@@ -3,7 +3,7 @@ package identities
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -39,7 +39,7 @@ func newIdentityAPIServer(ctx context.Context, mgmtCtx *config.ManagementContext
 func (s *identityAPIServer) getIdentities(tokenKey string) ([]v3.Identity, int, error) {
 	identities := make([]v3.Identity, 0)
 
-	log.Debugf("getIdentities: token cookie: %v", tokenKey)
+	logrus.Debugf("getIdentities: token cookie: %v", tokenKey)
 
 	token, err := s.getTokenCR(tokenKey)
 
@@ -58,7 +58,7 @@ func (s *identityAPIServer) getIdentities(tokenKey string) ([]v3.Identity, int, 
 func (s *identityAPIServer) findIdentities(tokenKey string, name string) ([]v3.Identity, int, error) {
 	var identities []v3.Identity
 	var status int
-	log.Debugf("searchIdentities: token cookie: %v, name: %v", tokenKey, name)
+	logrus.Debugf("searchIdentities: token cookie: %v, name: %v", tokenKey, name)
 
 	token, err := s.getTokenCR(tokenKey)
 	if err != nil {
@@ -74,11 +74,11 @@ func (s *identityAPIServer) getTokenCR(tokenID string) (*v3.Token, error) {
 		storedToken, err := s.tokensClient.Get(strings.ToLower(tokenID), metav1.GetOptions{})
 
 		if err != nil {
-			log.Info("Failed to get token resource: %v", err)
+			logrus.Info("Failed to get token resource: %v", err)
 			return nil, fmt.Errorf("Failed to retrieve auth token")
 		}
 
-		log.Debugf("storedToken token resource: %v", storedToken)
+		logrus.Debugf("storedToken token resource: %v", storedToken)
 
 		return storedToken, nil
 	}

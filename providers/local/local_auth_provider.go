@@ -3,7 +3,7 @@ package local
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,7 +44,7 @@ func (l *LProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Identity, []v
 	localUser, err := l.users.Get(username, metav1.GetOptions{})
 
 	if err != nil {
-		log.Info("Failed to get User resource: %v", err)
+		logrus.Info("Failed to get User resource: %v", err)
 		return userIdentity, groupIdentities, 401, fmt.Errorf("Invalid Credentials")
 	}
 
@@ -66,7 +66,7 @@ func (l *LProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Identity, []v
 		groupIdentities, status, err = l.getGroupIdentities(localUser)
 
 		if err != nil {
-			log.Info("Failed to get group identities for local user: %v, user: %v", err, localUser.ObjectMeta.Name)
+			logrus.Info("Failed to get group identities for local user: %v, user: %v", err, localUser.ObjectMeta.Name)
 			return userIdentity, groupIdentities, status, fmt.Errorf("Error getting group identities for local user %v", err)
 		}
 
@@ -92,7 +92,7 @@ func (l *LProvider) getGroupIdentities(user *v3.User) ([]v3.Identity, int, error
 			//find group for this member mapping
 			localGroup, err := l.groups.Get(gm.GroupName, metav1.GetOptions{})
 			if err != nil {
-				log.Errorf("Failed to get Group resource: %v", err)
+				logrus.Errorf("Failed to get Group resource: %v", err)
 				continue
 			}
 			groupIdentity := v3.Identity{

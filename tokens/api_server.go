@@ -3,7 +3,7 @@ package tokens
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -44,17 +44,17 @@ func newTokenAPIServer(ctx context.Context, mgmtCtx *config.ManagementContext) (
 //createLoginToken will authenticate with provider and creates a token CR
 func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, int, error) {
 
-	log.Info("Create Token Invoked %v", jsonInput)
+	logrus.Info("Create Token Invoked %v", jsonInput)
 
 	// Authenticate User
 	userIdentity, groupIdentities, status, err := providers.AuthenticateUser(jsonInput)
 
 	if status == 0 && err == nil {
-		log.Info("User Authenticated")
+		logrus.Info("User Authenticated")
 		if s.client != nil {
 			key, err := generateKey()
 			if err != nil {
-				log.Info("Failed to generate token key: %v", err)
+				logrus.Info("Failed to generate token key: %v", err)
 				return v3.Token{}, 0, fmt.Errorf("Failed to generate token key")
 			}
 
@@ -81,7 +81,7 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 			rToken, err := s.createK8sTokenCR(k8sToken)
 			return rToken, 0, err
 		}
-		log.Info("Client nil %v", s.client)
+		logrus.Info("Client nil %v", s.client)
 		return v3.Token{}, 500, fmt.Errorf("No k8s Client configured")
 	}
 
@@ -91,7 +91,7 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 //CreateDerivedToken will create a jwt token for the authenticated user
 func (s *tokenAPIServer) createDerivedToken(jsonInput v3.Token, tokenID string) (v3.Token, int, error) {
 
-	log.Info("Create Derived Token Invoked")
+	logrus.Info("Create Derived Token Invoked")
 
 	token, err := s.getK8sTokenCR(tokenID)
 
@@ -102,7 +102,7 @@ func (s *tokenAPIServer) createDerivedToken(jsonInput v3.Token, tokenID string) 
 	if s.client != nil {
 		key, err := generateKey()
 		if err != nil {
-			log.Info("Failed to generate token key: %v", err)
+			logrus.Info("Failed to generate token key: %v", err)
 			return v3.Token{}, 0, fmt.Errorf("Failed to generate token key")
 		}
 
@@ -128,7 +128,7 @@ func (s *tokenAPIServer) createDerivedToken(jsonInput v3.Token, tokenID string) 
 		return rToken, 0, err
 
 	}
-	log.Info("Client nil %v", s.client)
+	logrus.Info("Client nil %v", s.client)
 	return v3.Token{}, 500, fmt.Errorf("No k8s Client configured")
 
 }
@@ -148,10 +148,10 @@ func (s *tokenAPIServer) createK8sTokenCR(k8sToken *v3.Token) (v3.Token, error) 
 		createdToken, err := s.tokensClient.Create(k8sToken)
 
 		if err != nil {
-			log.Info("Failed to create token resource: %v", err)
+			logrus.Info("Failed to create token resource: %v", err)
 			return v3.Token{}, err
 		}
-		log.Info("Created Token %v", createdToken)
+		logrus.Info("Created Token %v", createdToken)
 		return *createdToken, nil
 	}
 
@@ -163,11 +163,11 @@ func (s *tokenAPIServer) getK8sTokenCR(tokenID string) (*v3.Token, error) {
 		storedToken, err := s.tokensClient.Get(strings.ToLower(tokenID), metav1.GetOptions{})
 
 		if err != nil {
-			log.Info("Failed to get token resource: %v", err)
+			logrus.Info("Failed to get token resource: %v", err)
 			return nil, fmt.Errorf("Failed to retrieve auth token")
 		}
 
-		log.Debugf("storedToken token resource: %v", storedToken)
+		logrus.Debugf("storedToken token resource: %v", storedToken)
 
 		return storedToken, nil
 	}
@@ -176,17 +176,17 @@ func (s *tokenAPIServer) getK8sTokenCR(tokenID string) (*v3.Token, error) {
 
 //GetTokens will list all tokens of the authenticated user - login and derived
 func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
-	log.Info("GET Token Invoked")
+	logrus.Info("GET Token Invoked")
 	tokens := make([]v3.Token, 0)
 
 	if s.client != nil {
 		storedToken, err := s.tokensClient.Get(strings.ToLower(tokenID), metav1.GetOptions{})
 
 		if err != nil {
-			log.Info("Failed to get token resource: %v", err)
+			logrus.Info("Failed to get token resource: %v", err)
 			return tokens, 401, fmt.Errorf("Failed to retrieve auth token")
 		}
-		log.Debugf("storedToken token resource: %v", storedToken)
+		logrus.Debugf("storedToken token resource: %v", storedToken)
 		externalID := storedToken.ExternalID
 		set := labels.Set(map[string]string{"io.cattle.token.field.externalID": externalID})
 		tokenList, err := s.tokensClient.List(metav1.ListOptions{LabelSelector: set.AsSelector().String()})
@@ -200,12 +200,12 @@ func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 		return tokens, 0, nil
 
 	}
-	log.Info("Client nil %v", s.client)
+	logrus.Info("Client nil %v", s.client)
 	return tokens, 500, fmt.Errorf("No k8s Client configured")
 }
 
 func (s *tokenAPIServer) deleteToken(tokenKey string) (int, error) {
-	log.Info("DELETE Token Invoked")
+	logrus.Info("DELETE Token Invoked")
 
 	if s.client != nil {
 		err := s.tokensClient.Delete(strings.ToLower(tokenKey), &metav1.DeleteOptions{})
@@ -213,10 +213,10 @@ func (s *tokenAPIServer) deleteToken(tokenKey string) (int, error) {
 		if err != nil {
 			return 500, fmt.Errorf("Failed to delete token")
 		}
-		log.Info("Deleted Token")
+		logrus.Info("Deleted Token")
 		return 0, nil
 
 	}
-	log.Info("Client nil %v", s.client)
+	logrus.Info("Client nil %v", s.client)
 	return 500, fmt.Errorf("No k8s Client configured")
 }
