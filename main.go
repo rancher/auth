@@ -4,8 +4,11 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gorilla/mux"
+	"github.com/rancher/auth/filter"
+	"github.com/rancher/auth/identities"
 	"github.com/rancher/auth/tokens"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 
 	"github.com/rancher/types/config"
@@ -44,33 +47,44 @@ func run(c *cli.Context) {
 
 	mgmtCtx, err := setupClient(c.String("cluster-config"), c.String("cluster-config"), "")
 	if err != nil {
-		log.Fatalf("Failed to create ManagementContext: %v", err)
+		logrus.Fatalf("Failed to create ManagementContext: %v", err)
 	}
 
-	handler, err := tokens.NewTokenAPIHandler(nil, mgmtCtx)
+	tokenHandler, err := tokens.NewTokenAPIHandler(nil, mgmtCtx)
 	if err != nil {
-		log.Fatalf("Failed to get tokenAndIdentity handler: %v", err)
+		logrus.Fatalf("Failed to get tokenAndIdentity handler: %v", err)
+	}
+
+	identityHandler, err := identities.NewIdentityAPIHandler(nil, mgmtCtx)
+	if err != nil {
+		logrus.Fatalf("Failed to get NewIdentityAPIHandler handler: %v", err)
+	}
+
+	authnFilter, err := filter.NewAuthenticationFilter(nil, mgmtCtx, nil)
+	if err != nil {
+		logrus.Fatalf("Failed to get NewAuthenticationFilter handler: %v", err)
 	}
 
 	if c.GlobalBool("debug") {
-		log.SetLevel(log.DebugLevel)
+		logrus.SetLevel(logrus.DebugLevel)
 	}
 
-	textFormatter := &log.TextFormatter{
+	textFormatter := &logrus.TextFormatter{
 		FullTimestamp: true,
 	}
-	log.SetFormatter(textFormatter)
+	logrus.SetFormatter(textFormatter)
 
-	log.Info("Starting Rancher Auth proxy")
+	logrus.Info("Starting Rancher Auth proxy")
 
 	httpHost := c.GlobalString("httpHost")
-	server := &http.Server{
-		Handler: handler,
-		Addr:    httpHost,
-	}
-	log.Infof("Starting http server listening on %v.", httpHost)
-	err = server.ListenAndServe()
-	log.Infof("https server exited. Error: %v", err)
+
+	router := mux.NewRouter()
+	router.Handle("/v3/tokens", tokenHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3/identities", identityHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3", authnFilter).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+
+	logrus.Infof("Starting http server listening on %v.", httpHost)
+	logrus.Fatal(http.ListenAndServe(httpHost, router))
 
 }
 

@@ -3,7 +3,7 @@ package tokens
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"time"
@@ -17,7 +17,7 @@ func (server *tokenAPIServer) login(w http.ResponseWriter, r *http.Request) {
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorf("login failed with error: %v", err)
+		logrus.Errorf("login failed with error: %v", err)
 		util.ReturnHTTPError(w, r, http.StatusBadRequest, fmt.Sprintf("Error reading input json data: %v", err))
 		return
 	}
@@ -25,7 +25,7 @@ func (server *tokenAPIServer) login(w http.ResponseWriter, r *http.Request) {
 
 	err = json.Unmarshal(bytes, &jsonInput)
 	if err != nil {
-		log.Errorf("unmarshal failed with error: %v", err)
+		logrus.Errorf("unmarshal failed with error: %v", err)
 		util.ReturnHTTPError(w, r, http.StatusBadRequest, fmt.Sprintf("Error unmarshaling input json data: %v", err))
 		return
 	}
@@ -35,7 +35,7 @@ func (server *tokenAPIServer) login(w http.ResponseWriter, r *http.Request) {
 	token, status, err = server.createLoginToken(jsonInput)
 
 	if err != nil {
-		log.Errorf("Login failed with error: %v", err)
+		logrus.Errorf("Login failed with error: %v", err)
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
@@ -70,22 +70,22 @@ func (server *tokenAPIServer) deriveToken(w http.ResponseWriter, r *http.Request
 
 	cookie, err := r.Cookie("rAuthnSessionToken")
 	if err != nil {
-		log.Info("Failed to get token cookie: %v", err)
+		logrus.Info("Failed to get token cookie: %v", err)
 		util.ReturnHTTPError(w, r, http.StatusUnauthorized, "No valid token cookie")
 		return
 	}
 
-	log.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
+	logrus.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
 
 	bytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		log.Errorf("GetToken failed with error: %v", err)
+		logrus.Errorf("GetToken failed with error: %v", err)
 	}
 	jsonInput := v3.Token{}
 
 	err = json.Unmarshal(bytes, &jsonInput)
 	if err != nil {
-		log.Errorf("unmarshal failed with error: %v", err)
+		logrus.Errorf("unmarshal failed with error: %v", err)
 	}
 
 	var token v3.Token
@@ -95,7 +95,7 @@ func (server *tokenAPIServer) deriveToken(w http.ResponseWriter, r *http.Request
 	token, status, err = server.createDerivedToken(jsonInput, cookie.Value)
 
 	if err != nil {
-		log.Errorf("deriveToken failed with error: %v", err)
+		logrus.Errorf("deriveToken failed with error: %v", err)
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
@@ -111,17 +111,17 @@ func (server *tokenAPIServer) deriveToken(w http.ResponseWriter, r *http.Request
 func (server *tokenAPIServer) listTokens(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("rAuthnSessionToken")
 	if err != nil {
-		log.Info("Failed to get token cookie: %v", err)
+		logrus.Info("Failed to get token cookie: %v", err)
 		util.ReturnHTTPError(w, r, http.StatusUnauthorized, "Invalid token cookie")
 		return
 	}
 
-	log.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
+	logrus.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
 
 	//getToken
 	tokens, status, err := server.getTokens(cookie.Value)
 	if err != nil {
-		log.Errorf("GetToken failed with error: %v", err)
+		logrus.Errorf("GetToken failed with error: %v", err)
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
@@ -138,12 +138,12 @@ func (server *tokenAPIServer) listTokens(w http.ResponseWriter, r *http.Request)
 func (server *tokenAPIServer) logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("rAuthnSessionToken")
 	if err != nil {
-		log.Info("Failed to get token cookie: %v", err)
+		logrus.Info("Failed to get token cookie: %v", err)
 		util.ReturnHTTPError(w, r, http.StatusUnauthorized, "Invalid token cookie")
 		return
 	}
 
-	log.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
+	logrus.Infof("token cookie: %v %v", cookie.Name, cookie.Value)
 
 	isSecure := false
 	if r.URL.Scheme == "https" {
@@ -164,7 +164,7 @@ func (server *tokenAPIServer) logout(w http.ResponseWriter, r *http.Request) {
 	//getToken
 	status, err := server.deleteToken(cookie.Value)
 	if err != nil {
-		log.Errorf("DeleteToken failed with error: %v", err)
+		logrus.Errorf("DeleteToken failed with error: %v", err)
 		if status == 0 {
 			status = http.StatusInternalServerError
 		}
