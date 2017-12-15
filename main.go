@@ -3,20 +3,23 @@ package main
 import (
 	"net/http"
 	"os"
+	"context"
+	"fmt"
 
-	"github.com/gorilla/mux"
+	//"github.com/gorilla/mux"
 	"github.com/rancher/auth/identities"
-	"github.com/rancher/auth/tokens"
-	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	//"github.com/rancher/auth/tokens"
+	//"github.com/sirupsen/logrus"
+	//"github.com/urfave/cli"
 
 	"github.com/rancher/types/config"
 
 	"k8s.io/client-go/tools/clientcmd"
+
 )
 
-var VERSION = "v0.0.0-dev"
-
+//var VERSION = "v0.0.0-dev"
+/*
 func main() {
 	app := cli.NewApp()
 	app.Name = "auth"
@@ -94,3 +97,31 @@ func setupClient(clusterManagerCfg string, clusterCfg string, clusterName string
 	return workload, nil
 
 }
+*/
+
+func main() {
+	if err := run(); err != nil {
+		panic(err)
+	}
+}
+
+func run() error {
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	if err != nil {
+		return err
+	}
+
+	mgmtCtx, err := config.NewManagementContext(*kubeConfig)
+	if err != nil {
+		return err
+	}
+
+	handler, err := identities.New(context.Background(), mgmtCtx)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Listening on 0.0.0.0:1234")
+	return http.ListenAndServe("0.0.0.0:1234", handler)
+}
+
