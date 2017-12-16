@@ -46,6 +46,9 @@ func (s *identityAPIServer) getIdentities(tokenKey string) ([]v3.Identity, int, 
 	if err != nil {
 		return identities, 401, err
 	}
+	
+	logrus.Debugf("getIdentities: token UserIdentity: %v", token.UserIdentity)
+	logrus.Debugf("getIdentities: token GroupIdentities: %v", token.GroupIdentities)
 
 	//add code to make sure token is valid
 	identities = append(identities, token.UserIdentity)

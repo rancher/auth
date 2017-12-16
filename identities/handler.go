@@ -3,21 +3,19 @@ package identities
 import (
 	"context"
 	"fmt"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"net/http"
-
+	
 	normanapi "github.com/rancher/norman/api"
-	"github.com/rancher/norman/api/builtin"
 	"github.com/rancher/norman/store/crd"
 	"github.com/rancher/norman/types"
-	//"github.com/rancher/types/apis/management.cattle.io/v3"
 	managementSchema "github.com/rancher/types/apis/management.cattle.io/v3/schema"
-	"github.com/rancher/types/client/management/v3"
+	//"github.com/rancher/types/client/management/v3"
 	"github.com/rancher/types/config"
+	"github.com/rancher/types/apis/management.cattle.io/v3"
 )
 
-//identityAPIHandler is a wrapper over the mux router serving /v3/identities API
+/*identityAPIHandler is a wrapper over the mux router serving /v3/identities API
 type identityAPIHandler struct {
 	identityRouter http.Handler
 }
@@ -30,7 +28,7 @@ func (h *identityAPIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.getRouter().ServeHTTP(w, r)
 }
 
-func NewIdentityAPIHandler(ctx context.Context, mgmtCtx *config.ManagementContext) (http.Handler, error) {
+/*func NewIdentityAPIHandler(ctx context.Context, mgmtCtx *config.ManagementContext) (http.Handler, error) {
 	router, err := newIdentityRouter(ctx, mgmtCtx)
 	if err != nil {
 		return nil, err
@@ -38,17 +36,20 @@ func NewIdentityAPIHandler(ctx context.Context, mgmtCtx *config.ManagementContex
 	return &identityAPIHandler{identityRouter: router}, nil
 }
 
-//newIdentityRouter creates and configures a mux router for /v3/identities APIs
+/*newIdentityRouter creates and configures a mux router for /v3/identities APIs
 func newIdentityRouter(ctx context.Context, mgmtCtx *config.ManagementContext) (*mux.Router, error) {
 	apiServer, err := newIdentityAPIServer(ctx, mgmtCtx)
 	if err != nil {
 		return nil, err
 	}
 
+	newSchemas := factory.Schemas(&managementSchema.Version)
+	
 	schemas := types.NewSchemas().
-		AddSchemas(managementSchema.Schemas)
+		AddSchemas(newSchemas)
+		
 
-	if err := setupSchemas(ctx, mgmtCtx, schemas); err != nil {
+	if err := setupSchemas(ctx, mgmtCtx, schemas, apiServer); err != nil {
 		return nil, err
 	}
 
@@ -66,13 +67,18 @@ func newIdentityRouter(ctx context.Context, mgmtCtx *config.ManagementContext) (
 	router.Handle("/v3/identities", server).Methods("GET")
 
 	return router, nil
-}
+}*/
 
-func New(ctx context.Context, mgmtCtx *config.ManagementContext) (http.Handler, error) {
-	schemas := types.NewSchemas().
-		AddSchemas(managementSchema.Schemas)
+func NewIdentityAPIHandler(ctx context.Context, mgmtCtx *config.ManagementContext) (http.Handler, error) {
+	
+	apiServer, err := newIdentityAPIServer(ctx, mgmtCtx)
+	if err != nil {
+		return nil, err
+	}
+		
+	schemas := types.NewSchemas() //.AddSchemas(managementSchema.Schemas)
 
-	if err := setupSchemas(ctx, mgmtCtx, schemas); err != nil {
+	if err := setupSchemas(ctx, mgmtCtx, schemas, apiServer); err != nil {
 		return nil, err
 	}
 
@@ -89,16 +95,19 @@ var crdVersions = []*types.APIVersion{
 	&managementSchema.Version,
 }
 
-func setupSchemas(ctx context.Context, management *config.ManagementContext, schemas *types.Schemas) error {
+func setupSchemas(ctx context.Context, management *config.ManagementContext, schemas *types.Schemas, apiServer *identityAPIServer) error {
 
-	schemas.MustImportAndCustomize(&builtin.Version, client.Identity{}, func(schema *types.Schema) {
+	schemas.MustImportAndCustomize(&managementSchema.Version, v3.Identity{}, func(schema *types.Schema) {
 		schema.CollectionMethods = []string{http.MethodGet}
 		//schema.CollectionActions = []string{http.MethodGet}
 		schema.ResourceMethods = []string{http.MethodGet}
-		schema.ListHandler = CustomHandler
+		schema.ListHandler = apiServer.handleListIdentities
 		schema.PluralName = "identities"
 	})
-
+	
+	//schema := schemas.Schema(&managementSchema.Version, v3.IdentityType)
+	//schema.ListHandler = apiServer.handleListIdentities
+	
 	crdStore, err := crd.NewCRDStoreFromConfig(management.RESTConfig)
 	if err != nil {
 		return err

@@ -1,10 +1,10 @@
 package main
 
 import (
-	"net/http"
-	"os"
 	"context"
 	"fmt"
+	"net/http"
+	"os"
 
 	//"github.com/gorilla/mux"
 	"github.com/rancher/auth/identities"
@@ -15,7 +15,6 @@ import (
 	"github.com/rancher/types/config"
 
 	"k8s.io/client-go/tools/clientcmd"
-
 )
 
 //var VERSION = "v0.0.0-dev"
@@ -116,7 +115,7 @@ func run() error {
 		return err
 	}
 
-	handler, err := identities.New(context.Background(), mgmtCtx)
+	handler, err := identities.NewIdentityAPIHandler(context.Background(), mgmtCtx)
 	if err != nil {
 		return err
 	}
@@ -124,4 +123,3 @@ func run() error {
 	fmt.Println("Listening on 0.0.0.0:1234")
 	return http.ListenAndServe("0.0.0.0:1234", handler)
 }
-
