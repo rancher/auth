@@ -1,20 +1,24 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"os"
 
-	"github.com/rancher/auth/tokens"
-	log "github.com/sirupsen/logrus"
-	"github.com/urfave/cli"
+	//"github.com/gorilla/mux"
+	"github.com/rancher/auth/identities"
+	//"github.com/rancher/auth/tokens"
+	//"github.com/sirupsen/logrus"
+	//"github.com/urfave/cli"
 
 	"github.com/rancher/types/config"
 
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-var VERSION = "v0.0.0-dev"
-
+//var VERSION = "v0.0.0-dev"
+/*
 func main() {
 	app := cli.NewApp()
 	app.Name = "auth"
@@ -47,9 +51,14 @@ func run(c *cli.Context) {
 		log.Fatalf("Failed to create ManagementContext: %v", err)
 	}
 
-	handler, err := tokens.NewTokenAPIHandler(nil, mgmtCtx)
+	tokenHandler, err := tokens.NewTokenAPIHandler(nil, mgmtCtx)
 	if err != nil {
 		log.Fatalf("Failed to get tokenAndIdentity handler: %v", err)
+	}
+
+	identityHandler, err := identities.NewIdentityAPIHandler(nil, mgmtCtx)
+	if err != nil {
+		log.Fatalf("Failed to get NewIdentityAPIHandler handler: %v", err)
 	}
 
 	if c.GlobalBool("debug") {
@@ -64,13 +73,13 @@ func run(c *cli.Context) {
 	log.Info("Starting Rancher Auth proxy")
 
 	httpHost := c.GlobalString("httpHost")
-	server := &http.Server{
-		Handler: handler,
-		Addr:    httpHost,
-	}
+
+	router := mux.NewRouter()
+	router.Handle("/v3/tokens", tokenHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3/identities", identityHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+
 	log.Infof("Starting http server listening on %v.", httpHost)
-	err = server.ListenAndServe()
-	log.Infof("https server exited. Error: %v", err)
+	log.Fatal(http.ListenAndServe(httpHost, router))
 
 }
 
@@ -86,4 +95,31 @@ func setupClient(clusterManagerCfg string, clusterCfg string, clusterName string
 
 	return workload, nil
 
+}
+*/
+
+func main() {
+	if err := run(); err != nil {
+		panic(err)
+	}
+}
+
+func run() error {
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
+	if err != nil {
+		return err
+	}
+
+	mgmtCtx, err := config.NewManagementContext(*kubeConfig)
+	if err != nil {
+		return err
+	}
+
+	handler, err := identities.NewIdentityAPIHandler(context.Background(), mgmtCtx)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("Listening on 0.0.0.0:1234")
+	return http.ListenAndServe("0.0.0.0:1234", handler)
 }
