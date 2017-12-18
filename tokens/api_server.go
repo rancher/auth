@@ -58,7 +58,7 @@ func newTokenAPIServer(ctx context.Context, mgmtCtx *config.ManagementContext) (
 
 //createLoginToken will authenticate with provider and creates a token CR
 func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, int, error) {
-	logrus.Debugf("Create Token Invoked %v", jsonInput)
+	logrus.Debugf("Create Token Invoked")
 
 	// Authenticate User
 	userPrincipal, groupPrincipals, status, err := providers.AuthenticateUser(jsonInput)
