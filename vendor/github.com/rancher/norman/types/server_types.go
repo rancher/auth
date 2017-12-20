@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 )
 
 type ValuesMap struct {
@@ -43,7 +44,7 @@ type ActionHandler func(actionName string, action *Action, request *APIContext) 
 
 type RequestHandler func(request *APIContext) error
 
-type QueryFilter func(opts QueryOptions, data []map[string]interface{}) []map[string]interface{}
+type QueryFilter func(opts *QueryOptions, data []map[string]interface{}) []map[string]interface{}
 
 type Validator func(request *APIContext, data map[string]interface{}) error
 
@@ -61,8 +62,13 @@ type ResponseWriter interface {
 }
 
 type AccessControl interface {
-	CanCreate(schema *Schema) bool
-	CanList(schema *Schema) bool
+	CanCreate(apiContext *APIContext, schema *Schema) bool
+	CanList(apiContext *APIContext, schema *Schema) bool
+	CanUpdate(apiContext *APIContext, schema *Schema) bool
+	CanDelete(apiContext *APIContext, schema *Schema) bool
+
+	Filter(apiContext *APIContext, obj map[string]interface{}, context map[string]string) map[string]interface{}
+	FilterList(apiContext *APIContext, obj []map[string]interface{}, context map[string]string) []map[string]interface{}
 }
 
 type APIContext struct {
@@ -74,6 +80,7 @@ type APIContext struct {
 	Schema                      *Schema
 	Schemas                     *Schemas
 	Version                     *APIVersion
+	Query                       url.Values
 	ResponseFormat              string
 	ReferenceValidator          ReferenceValidator
 	ResponseWriter              ResponseWriter
@@ -93,11 +100,11 @@ func (r *APIContext) WriteResponse(code int, obj interface{}) {
 	r.ResponseWriter.Write(r, code, obj)
 }
 
-func (r *APIContext) FilterList(opts QueryOptions, obj []map[string]interface{}) []map[string]interface{} {
+func (r *APIContext) FilterList(opts *QueryOptions, obj []map[string]interface{}) []map[string]interface{} {
 	return r.QueryFilter(opts, obj)
 }
 
-func (r *APIContext) FilterObject(opts QueryOptions, obj map[string]interface{}) map[string]interface{} {
+func (r *APIContext) FilterObject(opts *QueryOptions, obj map[string]interface{}) map[string]interface{} {
 	opts.Pagination = nil
 	result := r.QueryFilter(opts, []map[string]interface{}{obj})
 	if len(result) == 0 {
@@ -106,7 +113,7 @@ func (r *APIContext) FilterObject(opts QueryOptions, obj map[string]interface{})
 	return result[0]
 }
 
-func (r *APIContext) Filter(opts QueryOptions, obj interface{}) interface{} {
+func (r *APIContext) Filter(opts *QueryOptions, obj interface{}) interface{} {
 	switch v := obj.(type) {
 	case []map[string]interface{}:
 		return r.FilterList(opts, v)
@@ -149,13 +156,14 @@ type URLBuilder interface {
 	SetSubContext(subContext string)
 	FilterLink(schema *Schema, fieldName string, value string) string
 	Action(action string, resource *RawResource) string
+	ResourceLinkByID(schema *Schema, id string) string
 }
 
 type Store interface {
 	ByID(apiContext *APIContext, schema *Schema, id string) (map[string]interface{}, error)
-	List(apiContext *APIContext, schema *Schema, opt QueryOptions) ([]map[string]interface{}, error)
+	List(apiContext *APIContext, schema *Schema, opt *QueryOptions) ([]map[string]interface{}, error)
 	Create(apiContext *APIContext, schema *Schema, data map[string]interface{}) (map[string]interface{}, error)
 	Update(apiContext *APIContext, schema *Schema, data map[string]interface{}, id string) (map[string]interface{}, error)
-	Delete(apiContext *APIContext, schema *Schema, id string) error
-	Watch(apiContext *APIContext, schema *Schema, opt QueryOptions) (chan map[string]interface{}, error)
+	Delete(apiContext *APIContext, schema *Schema, id string) (map[string]interface{}, error)
+	Watch(apiContext *APIContext, schema *Schema, opt *QueryOptions) (chan map[string]interface{}, error)
 }

@@ -162,12 +162,12 @@ func (g *genericController) processNextWorkItem() bool {
 
 	// do your work on the key.  This method will contains your "do stuff" logic
 	err := g.syncHandler(key.(string))
-	if err == nil {
+	if _, ok := err.(*ForgetError); err == nil || ok {
 		g.queue.Forget(key)
 		return true
 	}
 
-	utilruntime.HandleError(fmt.Errorf("%v failed with : %v", key, err))
+	utilruntime.HandleError(fmt.Errorf("%v %v failed with : %v", g.name, key, err))
 	g.queue.AddRateLimited(key)
 
 	return true

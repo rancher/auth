@@ -17,8 +17,8 @@ import (
 
 var (
 	NodeGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Node",
 	}
 	NodeResource = metav1.APIResource{
@@ -54,13 +54,17 @@ type NodeController interface {
 type NodeInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1.Node) (*v1.Node, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.Node, error)
 	Get(name string, opts metav1.GetOptions) (*v1.Node, error)
 	Update(*v1.Node) (*v1.Node, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*NodeList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() NodeController
+	AddSyncHandler(sync NodeHandlerFunc)
+	AddLifecycle(name string, lifecycle NodeLifecycle)
 }
 
 type nodeLister struct {
@@ -171,6 +175,11 @@ func (s *nodeClient) Get(name string, opts metav1.GetOptions) (*v1.Node, error) 
 	return obj.(*v1.Node), err
 }
 
+func (s *nodeClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.Node, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1.Node), err
+}
+
 func (s *nodeClient) Update(o *v1.Node) (*v1.Node, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1.Node), err
@@ -178,6 +187,10 @@ func (s *nodeClient) Update(o *v1.Node) (*v1.Node, error) {
 
 func (s *nodeClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *nodeClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *nodeClient) List(opts metav1.ListOptions) (*NodeList, error) {
@@ -189,6 +202,21 @@ func (s *nodeClient) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *nodeClient) Patch(o *v1.Node, data []byte, subresources ...string) (*v1.Node, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1.Node), err
+}
+
 func (s *nodeClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *nodeClient) AddSyncHandler(sync NodeHandlerFunc) {
+	s.Controller().AddHandler(sync)
+}
+
+func (s *nodeClient) AddLifecycle(name string, lifecycle NodeLifecycle) {
+	sync := NewNodeLifecycleAdapter(name, s, lifecycle)
+	s.AddSyncHandler(sync)
 }
