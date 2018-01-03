@@ -6,6 +6,7 @@ import (
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/rancher/types/config"
 
+	"github.com/rancher/auth/providers/github"
 	"github.com/rancher/auth/providers/local"
 )
 
@@ -14,14 +15,14 @@ var providers map[string]PrincipalProvider
 var providerOrderList []string
 
 func init() {
-	providerOrderList = []string{"local"}
+	providerOrderList = []string{"github", "local"}
 	providers = make(map[string]PrincipalProvider)
 }
 
 //PrincipalProvider interfacse defines what methods an identity provider should implement
 type PrincipalProvider interface {
 	GetName() string
-	AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, int, error)
+	AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, map[string]string, int, error)
 	SearchPrincipals(name string, myToken v3.Token) ([]v3.Principal, int, error)
 }
 
@@ -31,24 +32,30 @@ func Configure(ctx context.Context, mgmtCtx *config.ManagementContext) {
 			switch providerName {
 			case "local":
 				providers[providerName] = local.Configure(ctx, mgmtCtx)
+			case "github":
+				providers[providerName] = github.Configure(ctx, mgmtCtx)
 			}
 		}
 	}
 }
 
-func AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, int, error) {
+func AuthenticateUser(jsonInput v3.LoginInput) (v3.Principal, []v3.Principal, map[string]string, int, error) {
 	var groupPrincipals []v3.Principal
 	var userPrincipal v3.Principal
+	var providerInfo = make(map[string]string)
 	var status int
 	var err error
+	var providerName string
 
-	for _, providerName := range providerOrderList {
-		switch providerName {
-		case "local":
-			userPrincipal, groupPrincipals, status, err = providers[providerName].AuthenticateUser(jsonInput)
-		}
+	if jsonInput.GithubCredential.Code != "" {
+		providerName = "github"
+	} else if jsonInput.LocalCredential.Username != "" {
+		providerName = "local"
 	}
-	return userPrincipal, groupPrincipals, status, err
+
+	userPrincipal, groupPrincipals, providerInfo, status, err = providers[providerName].AuthenticateUser(jsonInput)
+
+	return userPrincipal, groupPrincipals, providerInfo, status, err
 }
 
 func SearchPrincipals(name string, myToken v3.Token) ([]v3.Principal, int, error) {
@@ -56,15 +63,7 @@ func SearchPrincipals(name string, myToken v3.Token) ([]v3.Principal, int, error
 	var status int
 	var err error
 
-	for _, providerName := range providerOrderList {
-		switch providerName {
-		case "local":
-			localprincipals, status, err := providers[providerName].SearchPrincipals(name, myToken)
-			if err != nil {
-				return localprincipals, status, err
-			}
-			principals = append(principals, localprincipals...)
-		}
-	}
+	principals, status, err = providers[myToken.AuthProvider].SearchPrincipals(name, myToken)
+
 	return principals, status, err
 }

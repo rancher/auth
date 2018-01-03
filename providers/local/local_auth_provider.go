@@ -121,36 +121,37 @@ func (l *LProvider) GetName() string {
 	return "local"
 }
 
-func (l *LProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []v3.Principal, int, error) {
+func (l *LProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []v3.Principal, map[string]string, int, error) {
 	// TODO fix responses to be json
-	username := loginInput.LocalCredential.Username
-	pwd := loginInput.LocalCredential.Password
-
 	var groupPrincipals []v3.Principal
 	var userPrincipal v3.Principal
+	var providerInfo = make(map[string]string)
+
+	username := loginInput.LocalCredential.Username
+	pwd := loginInput.LocalCredential.Password
 
 	objs, err := l.userIndexer.ByIndex(userNameIndex, username)
 	if err != nil {
 		logrus.Infof("Failed to get User resource for %v: %v", username, err)
-		return userPrincipal, groupPrincipals, 401, fmt.Errorf("Invalid Credentials")
+		return userPrincipal, groupPrincipals, providerInfo, 401, fmt.Errorf("Invalid Credentials")
 	}
 	if len(objs) == 0 {
-		return userPrincipal, groupPrincipals, 401, fmt.Errorf("Invalid Credentials")
+		return userPrincipal, groupPrincipals, providerInfo, 401, fmt.Errorf("Invalid Credentials")
 	}
 	if len(objs) > 1 {
 		logrus.Errorf("Found more than one user matching %v", username)
-		return userPrincipal, groupPrincipals, 401, fmt.Errorf("Invalid Credentials")
+		return userPrincipal, groupPrincipals, providerInfo, 401, fmt.Errorf("Invalid Credentials")
 	}
 
 	user, ok := objs[0].(*v3.User)
 	if !ok {
 		logrus.Errorf("User isnt a user %v", objs[0])
-		return userPrincipal, groupPrincipals, 500, fmt.Errorf("fatal error. User is not a user")
+		return userPrincipal, groupPrincipals, providerInfo, 500, fmt.Errorf("fatal error. User is not a user")
 
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(pwd)); err != nil {
-		return userPrincipal, groupPrincipals, 401, fmt.Errorf("Invalid Credentials")
+		return userPrincipal, groupPrincipals, providerInfo, 401, fmt.Errorf("Invalid Credentials")
 	}
 
 	principalID := getLocalPrincipalID(user)
@@ -165,10 +166,10 @@ func (l *LProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []
 	groupPrincipals, status, err := l.getGroupPrincipals(user)
 	if err != nil {
 		logrus.Errorf("Failed to get group principals for local user: %v, user: %v", err, user.ObjectMeta.Name)
-		return userPrincipal, groupPrincipals, status, fmt.Errorf("Error getting group principals for local user %v", err)
+		return userPrincipal, groupPrincipals, providerInfo, status, fmt.Errorf("Error getting group principals for local user %v", err)
 	}
 
-	return userPrincipal, groupPrincipals, 0, nil
+	return userPrincipal, groupPrincipals, providerInfo, 0, nil
 }
 
 func getLocalPrincipalID(user *v3.User) string {

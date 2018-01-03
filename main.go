@@ -75,6 +75,7 @@ func run(c *cli.Context) {
 	router := mux.NewRouter()
 	router.Handle("/v3/tokens", tokenHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
 	router.Handle("/v3/principals", principalHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3/authconfigs", tokenHandler).Methods("GET")
 
 	log.Infof("Starting http server listening on %v.", httpHost)
 	log.Fatal(http.ListenAndServe(httpHost, router))
