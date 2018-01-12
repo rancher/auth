@@ -17,15 +17,16 @@ import (
 
 var (
 	RoleBindingGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "rbac.authorization.k8s.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "RoleBinding",
 	}
 	RoleBindingResource = metav1.APIResource{
 		Name:         "rolebindings",
 		SingularName: "rolebinding",
-		Namespaced:   false,
-		Kind:         RoleBindingGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: RoleBindingGroupVersionKind.Kind,
 	}
 )
 
@@ -54,13 +55,17 @@ type RoleBindingController interface {
 type RoleBindingInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1.RoleBinding) (*v1.RoleBinding, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.RoleBinding, error)
 	Get(name string, opts metav1.GetOptions) (*v1.RoleBinding, error)
 	Update(*v1.RoleBinding) (*v1.RoleBinding, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*RoleBindingList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() RoleBindingController
+	AddSyncHandler(sync RoleBindingHandlerFunc)
+	AddLifecycle(name string, lifecycle RoleBindingLifecycle)
 }
 
 type roleBindingLister struct {
@@ -171,6 +176,11 @@ func (s *roleBindingClient) Get(name string, opts metav1.GetOptions) (*v1.RoleBi
 	return obj.(*v1.RoleBinding), err
 }
 
+func (s *roleBindingClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.RoleBinding, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1.RoleBinding), err
+}
+
 func (s *roleBindingClient) Update(o *v1.RoleBinding) (*v1.RoleBinding, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1.RoleBinding), err
@@ -178,6 +188,10 @@ func (s *roleBindingClient) Update(o *v1.RoleBinding) (*v1.RoleBinding, error) {
 
 func (s *roleBindingClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *roleBindingClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *roleBindingClient) List(opts metav1.ListOptions) (*RoleBindingList, error) {
@@ -189,6 +203,21 @@ func (s *roleBindingClient) Watch(opts metav1.ListOptions) (watch.Interface, err
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *roleBindingClient) Patch(o *v1.RoleBinding, data []byte, subresources ...string) (*v1.RoleBinding, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1.RoleBinding), err
+}
+
 func (s *roleBindingClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *roleBindingClient) AddSyncHandler(sync RoleBindingHandlerFunc) {
+	s.Controller().AddHandler(sync)
+}
+
+func (s *roleBindingClient) AddLifecycle(name string, lifecycle RoleBindingLifecycle) {
+	sync := NewRoleBindingLifecycleAdapter(name, s, lifecycle)
+	s.AddSyncHandler(sync)
 }

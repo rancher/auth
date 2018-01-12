@@ -16,8 +16,8 @@ import (
 
 var (
 	PrincipalGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Principal",
 	}
 	PrincipalResource = metav1.APIResource{
@@ -53,13 +53,17 @@ type PrincipalController interface {
 type PrincipalInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*Principal) (*Principal, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*Principal, error)
 	Get(name string, opts metav1.GetOptions) (*Principal, error)
 	Update(*Principal) (*Principal, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*PrincipalList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() PrincipalController
+	AddSyncHandler(sync PrincipalHandlerFunc)
+	AddLifecycle(name string, lifecycle PrincipalLifecycle)
 }
 
 type principalLister struct {
@@ -170,6 +174,11 @@ func (s *principalClient) Get(name string, opts metav1.GetOptions) (*Principal, 
 	return obj.(*Principal), err
 }
 
+func (s *principalClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*Principal, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*Principal), err
+}
+
 func (s *principalClient) Update(o *Principal) (*Principal, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*Principal), err
@@ -177,6 +186,10 @@ func (s *principalClient) Update(o *Principal) (*Principal, error) {
 
 func (s *principalClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *principalClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *principalClient) List(opts metav1.ListOptions) (*PrincipalList, error) {
@@ -188,6 +201,21 @@ func (s *principalClient) Watch(opts metav1.ListOptions) (watch.Interface, error
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *principalClient) Patch(o *Principal, data []byte, subresources ...string) (*Principal, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*Principal), err
+}
+
 func (s *principalClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *principalClient) AddSyncHandler(sync PrincipalHandlerFunc) {
+	s.Controller().AddHandler(sync)
+}
+
+func (s *principalClient) AddLifecycle(name string, lifecycle PrincipalLifecycle) {
+	sync := NewPrincipalLifecycleAdapter(name, s, lifecycle)
+	s.AddSyncHandler(sync)
 }

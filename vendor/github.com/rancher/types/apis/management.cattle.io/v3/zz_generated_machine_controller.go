@@ -16,8 +16,8 @@ import (
 
 var (
 	MachineGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Machine",
 	}
 	MachineResource = metav1.APIResource{
@@ -53,13 +53,17 @@ type MachineController interface {
 type MachineInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*Machine) (*Machine, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*Machine, error)
 	Get(name string, opts metav1.GetOptions) (*Machine, error)
 	Update(*Machine) (*Machine, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*MachineList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() MachineController
+	AddSyncHandler(sync MachineHandlerFunc)
+	AddLifecycle(name string, lifecycle MachineLifecycle)
 }
 
 type machineLister struct {
@@ -170,6 +174,11 @@ func (s *machineClient) Get(name string, opts metav1.GetOptions) (*Machine, erro
 	return obj.(*Machine), err
 }
 
+func (s *machineClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*Machine, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*Machine), err
+}
+
 func (s *machineClient) Update(o *Machine) (*Machine, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*Machine), err
@@ -177,6 +186,10 @@ func (s *machineClient) Update(o *Machine) (*Machine, error) {
 
 func (s *machineClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *machineClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *machineClient) List(opts metav1.ListOptions) (*MachineList, error) {
@@ -188,6 +201,21 @@ func (s *machineClient) Watch(opts metav1.ListOptions) (watch.Interface, error) 
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *machineClient) Patch(o *Machine, data []byte, subresources ...string) (*Machine, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*Machine), err
+}
+
 func (s *machineClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *machineClient) AddSyncHandler(sync MachineHandlerFunc) {
+	s.Controller().AddHandler(sync)
+}
+
+func (s *machineClient) AddLifecycle(name string, lifecycle MachineLifecycle) {
+	sync := NewMachineLifecycleAdapter(name, s, lifecycle)
+	s.AddSyncHandler(sync)
 }
