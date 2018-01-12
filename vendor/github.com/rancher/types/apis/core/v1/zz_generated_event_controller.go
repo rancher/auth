@@ -17,8 +17,8 @@ import (
 
 var (
 	EventGroupVersionKind = schema.GroupVersionKind{
-		Version: "v1",
-		Group:   "",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "Event",
 	}
 	EventResource = metav1.APIResource{
@@ -54,13 +54,17 @@ type EventController interface {
 type EventInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*v1.Event) (*v1.Event, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.Event, error)
 	Get(name string, opts metav1.GetOptions) (*v1.Event, error)
 	Update(*v1.Event) (*v1.Event, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*EventList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() EventController
+	AddSyncHandler(sync EventHandlerFunc)
+	AddLifecycle(name string, lifecycle EventLifecycle)
 }
 
 type eventLister struct {
@@ -171,6 +175,11 @@ func (s *eventClient) Get(name string, opts metav1.GetOptions) (*v1.Event, error
 	return obj.(*v1.Event), err
 }
 
+func (s *eventClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*v1.Event, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*v1.Event), err
+}
+
 func (s *eventClient) Update(o *v1.Event) (*v1.Event, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*v1.Event), err
@@ -178,6 +187,10 @@ func (s *eventClient) Update(o *v1.Event) (*v1.Event, error) {
 
 func (s *eventClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *eventClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *eventClient) List(opts metav1.ListOptions) (*EventList, error) {
@@ -189,6 +202,21 @@ func (s *eventClient) Watch(opts metav1.ListOptions) (watch.Interface, error) {
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *eventClient) Patch(o *v1.Event, data []byte, subresources ...string) (*v1.Event, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*v1.Event), err
+}
+
 func (s *eventClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *eventClient) AddSyncHandler(sync EventHandlerFunc) {
+	s.Controller().AddHandler(sync)
+}
+
+func (s *eventClient) AddLifecycle(name string, lifecycle EventLifecycle) {
+	sync := NewEventLifecycleAdapter(name, s, lifecycle)
+	s.AddSyncHandler(sync)
 }
