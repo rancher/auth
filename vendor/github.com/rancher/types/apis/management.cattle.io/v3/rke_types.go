@@ -23,7 +23,7 @@ type RancherKubernetesEngineConfig struct {
 
 type RKEConfigNode struct {
 	// Name of the host provisioned via docker machine
-	MachineName string `yaml:"machine_name" json:"machineName, omitempty"`
+	MachineName string `yaml:"machine_name,omitempty" json:"machineName,omitempty" norman:"type=reference[machine]"`
 	// IP or FQDN that is fully resolvable and used for SSH communication
 	Address string `yaml:"address" json:"address,omitempty"`
 	// Optional - Internal address that will be used for components communication
@@ -67,6 +67,8 @@ type KubeAPIService struct {
 	BaseService `yaml:",inline" json:",inline"`
 	// Virtual IP range that will be used by Kubernetes services
 	ServiceClusterIPRange string `yaml:"service_cluster_ip_range" json:"serviceClusterIpRange,omitempty"`
+	// Enabled/Disable PodSecurityPolicy
+	PodSecurityPolicy bool `yaml:"pod_security_policy" json:"podSecurityPolicy,omitempty"`
 }
 
 type KubeControllerService struct {

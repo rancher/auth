@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/gorilla/mux"
+	"github.com/rancher/auth/principals"
 	"github.com/rancher/auth/tokens"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -47,9 +49,14 @@ func run(c *cli.Context) {
 		log.Fatalf("Failed to create ManagementContext: %v", err)
 	}
 
-	handler, err := tokens.NewTokenAPIHandler(nil, mgmtCtx)
+	tokenHandler, err := tokens.NewTokenAPIHandler(nil, mgmtCtx)
 	if err != nil {
-		log.Fatalf("Failed to get tokenAndIdentity handler: %v", err)
+		log.Fatalf("Failed to get tokenAndPrincipal handler: %v", err)
+	}
+
+	principalHandler, err := principals.NewPrincipalAPIHandler(nil, mgmtCtx)
+	if err != nil {
+		log.Fatalf("Failed to get NewPrincipalAPIHandler handler: %v", err)
 	}
 
 	if c.GlobalBool("debug") {
@@ -64,13 +71,14 @@ func run(c *cli.Context) {
 	log.Info("Starting Rancher Auth proxy")
 
 	httpHost := c.GlobalString("httpHost")
-	server := &http.Server{
-		Handler: handler,
-		Addr:    httpHost,
-	}
+
+	router := mux.NewRouter()
+	router.Handle("/v3/tokens", tokenHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3/principals", principalHandler).Methods("GET", "POST", "PUT", "DELETE", "PATCH", "HEAD")
+	router.Handle("/v3/authconfigs", tokenHandler).Methods("GET")
+
 	log.Infof("Starting http server listening on %v.", httpHost)
-	err = server.ListenAndServe()
-	log.Infof("https server exited. Error: %v", err)
+	log.Fatal(http.ListenAndServe(httpHost, router))
 
 }
 

@@ -16,8 +16,8 @@ import (
 
 var (
 	MachineDriverGroupVersionKind = schema.GroupVersionKind{
-		Version: "v3",
-		Group:   "management.cattle.io",
+		Version: Version,
+		Group:   GroupName,
 		Kind:    "MachineDriver",
 	}
 	MachineDriverResource = metav1.APIResource{
@@ -53,13 +53,17 @@ type MachineDriverController interface {
 type MachineDriverInterface interface {
 	ObjectClient() *clientbase.ObjectClient
 	Create(*MachineDriver) (*MachineDriver, error)
+	GetNamespace(name, namespace string, opts metav1.GetOptions) (*MachineDriver, error)
 	Get(name string, opts metav1.GetOptions) (*MachineDriver, error)
 	Update(*MachineDriver) (*MachineDriver, error)
 	Delete(name string, options *metav1.DeleteOptions) error
+	DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error
 	List(opts metav1.ListOptions) (*MachineDriverList, error)
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() MachineDriverController
+	AddSyncHandler(sync MachineDriverHandlerFunc)
+	AddLifecycle(name string, lifecycle MachineDriverLifecycle)
 }
 
 type machineDriverLister struct {
@@ -170,6 +174,11 @@ func (s *machineDriverClient) Get(name string, opts metav1.GetOptions) (*Machine
 	return obj.(*MachineDriver), err
 }
 
+func (s *machineDriverClient) GetNamespace(name, namespace string, opts metav1.GetOptions) (*MachineDriver, error) {
+	obj, err := s.objectClient.GetNamespace(name, namespace, opts)
+	return obj.(*MachineDriver), err
+}
+
 func (s *machineDriverClient) Update(o *MachineDriver) (*MachineDriver, error) {
 	obj, err := s.objectClient.Update(o.Name, o)
 	return obj.(*MachineDriver), err
@@ -177,6 +186,10 @@ func (s *machineDriverClient) Update(o *MachineDriver) (*MachineDriver, error) {
 
 func (s *machineDriverClient) Delete(name string, options *metav1.DeleteOptions) error {
 	return s.objectClient.Delete(name, options)
+}
+
+func (s *machineDriverClient) DeleteNamespace(name, namespace string, options *metav1.DeleteOptions) error {
+	return s.objectClient.DeleteNamespace(name, namespace, options)
 }
 
 func (s *machineDriverClient) List(opts metav1.ListOptions) (*MachineDriverList, error) {
@@ -188,6 +201,21 @@ func (s *machineDriverClient) Watch(opts metav1.ListOptions) (watch.Interface, e
 	return s.objectClient.Watch(opts)
 }
 
+// Patch applies the patch and returns the patched deployment.
+func (s *machineDriverClient) Patch(o *MachineDriver, data []byte, subresources ...string) (*MachineDriver, error) {
+	obj, err := s.objectClient.Patch(o.Name, o, data, subresources...)
+	return obj.(*MachineDriver), err
+}
+
 func (s *machineDriverClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error {
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
+}
+
+func (s *machineDriverClient) AddSyncHandler(sync MachineDriverHandlerFunc) {
+	s.Controller().AddHandler(sync)
+}
+
+func (s *machineDriverClient) AddLifecycle(name string, lifecycle MachineDriverLifecycle) {
+	sync := NewMachineDriverLifecycleAdapter(name, s, lifecycle)
+	s.AddSyncHandler(sync)
 }
