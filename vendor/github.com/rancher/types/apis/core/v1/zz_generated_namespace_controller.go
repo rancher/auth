@@ -45,7 +45,8 @@ type NamespaceLister interface {
 type NamespaceController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() NamespaceLister
-	AddHandler(handler NamespaceHandlerFunc)
+	AddHandler(name string, handler NamespaceHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler NamespaceHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -63,8 +64,10 @@ type NamespaceInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() NamespaceController
-	AddSyncHandler(sync NamespaceHandlerFunc)
+	AddHandler(name string, sync NamespaceHandlerFunc)
 	AddLifecycle(name string, lifecycle NamespaceLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync NamespaceHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle NamespaceLifecycle)
 }
 
 type namespaceLister struct {
@@ -108,8 +111,8 @@ func (c *namespaceController) Lister() NamespaceLister {
 	}
 }
 
-func (c *namespaceController) AddHandler(handler NamespaceHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *namespaceController) AddHandler(name string, handler NamespaceHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -117,6 +120,24 @@ func (c *namespaceController) AddHandler(handler NamespaceHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*v1.Namespace))
+	})
+}
+
+func (c *namespaceController) AddClusterScopedHandler(name, cluster string, handler NamespaceHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*v1.Namespace))
 	})
 }
@@ -212,11 +233,20 @@ func (s *namespaceClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, lis
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *namespaceClient) AddSyncHandler(sync NamespaceHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *namespaceClient) AddHandler(name string, sync NamespaceHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *namespaceClient) AddLifecycle(name string, lifecycle NamespaceLifecycle) {
-	sync := NewNamespaceLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewNamespaceLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *namespaceClient) AddClusterScopedHandler(name, clusterName string, sync NamespaceHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *namespaceClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle NamespaceLifecycle) {
+	sync := NewNamespaceLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

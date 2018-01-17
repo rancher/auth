@@ -45,7 +45,8 @@ type PodSecurityPolicyLister interface {
 type PodSecurityPolicyController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() PodSecurityPolicyLister
-	AddHandler(handler PodSecurityPolicyHandlerFunc)
+	AddHandler(name string, handler PodSecurityPolicyHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler PodSecurityPolicyHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -63,8 +64,10 @@ type PodSecurityPolicyInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() PodSecurityPolicyController
-	AddSyncHandler(sync PodSecurityPolicyHandlerFunc)
+	AddHandler(name string, sync PodSecurityPolicyHandlerFunc)
 	AddLifecycle(name string, lifecycle PodSecurityPolicyLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync PodSecurityPolicyHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle PodSecurityPolicyLifecycle)
 }
 
 type podSecurityPolicyLister struct {
@@ -108,8 +111,8 @@ func (c *podSecurityPolicyController) Lister() PodSecurityPolicyLister {
 	}
 }
 
-func (c *podSecurityPolicyController) AddHandler(handler PodSecurityPolicyHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *podSecurityPolicyController) AddHandler(name string, handler PodSecurityPolicyHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -117,6 +120,24 @@ func (c *podSecurityPolicyController) AddHandler(handler PodSecurityPolicyHandle
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*v1beta1.PodSecurityPolicy))
+	})
+}
+
+func (c *podSecurityPolicyController) AddClusterScopedHandler(name, cluster string, handler PodSecurityPolicyHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*v1beta1.PodSecurityPolicy))
 	})
 }
@@ -212,11 +233,20 @@ func (s *podSecurityPolicyClient) DeleteCollection(deleteOpts *metav1.DeleteOpti
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *podSecurityPolicyClient) AddSyncHandler(sync PodSecurityPolicyHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *podSecurityPolicyClient) AddHandler(name string, sync PodSecurityPolicyHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *podSecurityPolicyClient) AddLifecycle(name string, lifecycle PodSecurityPolicyLifecycle) {
-	sync := NewPodSecurityPolicyLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewPodSecurityPolicyLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *podSecurityPolicyClient) AddClusterScopedHandler(name, clusterName string, sync PodSecurityPolicyHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *podSecurityPolicyClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle PodSecurityPolicyLifecycle) {
+	sync := NewPodSecurityPolicyLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

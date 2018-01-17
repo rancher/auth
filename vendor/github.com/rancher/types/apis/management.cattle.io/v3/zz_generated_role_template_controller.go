@@ -44,7 +44,8 @@ type RoleTemplateLister interface {
 type RoleTemplateController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() RoleTemplateLister
-	AddHandler(handler RoleTemplateHandlerFunc)
+	AddHandler(name string, handler RoleTemplateHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler RoleTemplateHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +63,10 @@ type RoleTemplateInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() RoleTemplateController
-	AddSyncHandler(sync RoleTemplateHandlerFunc)
+	AddHandler(name string, sync RoleTemplateHandlerFunc)
 	AddLifecycle(name string, lifecycle RoleTemplateLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync RoleTemplateHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle RoleTemplateLifecycle)
 }
 
 type roleTemplateLister struct {
@@ -107,8 +110,8 @@ func (c *roleTemplateController) Lister() RoleTemplateLister {
 	}
 }
 
-func (c *roleTemplateController) AddHandler(handler RoleTemplateHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *roleTemplateController) AddHandler(name string, handler RoleTemplateHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +119,24 @@ func (c *roleTemplateController) AddHandler(handler RoleTemplateHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*RoleTemplate))
+	})
+}
+
+func (c *roleTemplateController) AddClusterScopedHandler(name, cluster string, handler RoleTemplateHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*RoleTemplate))
 	})
 }
@@ -211,11 +232,20 @@ func (s *roleTemplateClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, 
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *roleTemplateClient) AddSyncHandler(sync RoleTemplateHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *roleTemplateClient) AddHandler(name string, sync RoleTemplateHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *roleTemplateClient) AddLifecycle(name string, lifecycle RoleTemplateLifecycle) {
-	sync := NewRoleTemplateLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewRoleTemplateLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *roleTemplateClient) AddClusterScopedHandler(name, clusterName string, sync RoleTemplateHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *roleTemplateClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle RoleTemplateLifecycle) {
+	sync := NewRoleTemplateLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

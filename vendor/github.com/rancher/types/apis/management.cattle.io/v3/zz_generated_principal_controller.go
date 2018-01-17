@@ -44,7 +44,8 @@ type PrincipalLister interface {
 type PrincipalController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() PrincipalLister
-	AddHandler(handler PrincipalHandlerFunc)
+	AddHandler(name string, handler PrincipalHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler PrincipalHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +63,10 @@ type PrincipalInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() PrincipalController
-	AddSyncHandler(sync PrincipalHandlerFunc)
+	AddHandler(name string, sync PrincipalHandlerFunc)
 	AddLifecycle(name string, lifecycle PrincipalLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync PrincipalHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle PrincipalLifecycle)
 }
 
 type principalLister struct {
@@ -107,8 +110,8 @@ func (c *principalController) Lister() PrincipalLister {
 	}
 }
 
-func (c *principalController) AddHandler(handler PrincipalHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *principalController) AddHandler(name string, handler PrincipalHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +119,24 @@ func (c *principalController) AddHandler(handler PrincipalHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*Principal))
+	})
+}
+
+func (c *principalController) AddClusterScopedHandler(name, cluster string, handler PrincipalHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*Principal))
 	})
 }
@@ -211,11 +232,20 @@ func (s *principalClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, lis
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *principalClient) AddSyncHandler(sync PrincipalHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *principalClient) AddHandler(name string, sync PrincipalHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *principalClient) AddLifecycle(name string, lifecycle PrincipalLifecycle) {
-	sync := NewPrincipalLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewPrincipalLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *principalClient) AddClusterScopedHandler(name, clusterName string, sync PrincipalHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *principalClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle PrincipalLifecycle) {
+	sync := NewPrincipalLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

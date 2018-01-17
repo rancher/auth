@@ -26,7 +26,8 @@ var (
 		Init(clusterTypes).
 		Init(catalogTypes).
 		Init(authnTypes).
-		Init(schemaTypes)
+		Init(schemaTypes).
+		Init(stackTypes)
 )
 
 func schemaTypes(schemas *types.Schemas) *types.Schemas {
@@ -49,6 +50,7 @@ func clusterTypes(schemas *types.Schemas) *types.Schemas {
 	return schemas.
 		AddMapperForType(&Version, v3.Cluster{},
 			&m.Embed{Field: "status"},
+			m.DisplayName{},
 		).
 		AddMapperForType(&Version, v3.ClusterStatus{},
 			m.Drop{Field: "appliedSpec"},
@@ -156,18 +158,27 @@ func machineTypes(schemas *types.Schemas) *types.Schemas {
 	return schemas.
 		AddMapperForType(&Version, v3.MachineSpec{}, &m.Embed{Field: "nodeSpec"}).
 		AddMapperForType(&Version, v3.MachineStatus{},
-			&m.Drop{Field: "conditions"},
 			&m.Drop{Field: "rkeNode"},
 			&m.Drop{Field: "machineTemplateSpec"},
 			&m.Drop{Field: "machineDriverConfig"},
-			&m.Embed{Field: "nodeStatus"}).
+			&m.Embed{Field: "nodeStatus"},
+			&m.SliceMerge{From: []string{"conditions", "nodeConditions"}, To: "conditions"}).
+		AddMapperForType(&Version, v3.MachineConfig{},
+			&m.Drop{Field: "clusterName"}).
 		AddMapperForType(&Version, v3.Machine{},
 			&m.Embed{Field: "status"},
 			m.DisplayName{}).
-		AddMapperForType(&Version, v3.MachineDriver{}).
+		AddMapperForType(&Version, v3.MachineDriver{}, m.DisplayName{}).
 		AddMapperForType(&Version, v3.MachineTemplate{}, m.DisplayName{}).
 		MustImport(&Version, v3.Machine{}).
-		MustImport(&Version, v3.MachineDriver{}).
+		MustImportAndCustomize(&Version, v3.MachineDriver{}, func(schema *types.Schema) {
+			schema.ResourceActions["activate"] = types.Action{
+				Output: "machineDriver",
+			}
+			schema.ResourceActions["deactivate"] = types.Action{
+				Output: "machineDriver",
+			}
+		}).
 		MustImport(&Version, v3.MachineTemplate{})
 }
 
@@ -196,6 +207,20 @@ func authnTypes(schemas *types.Schemas) *types.Schemas {
 				"changepassword": {
 					Input:  "changePasswordInput",
 					Output: "user",
+				},
+			}
+		})
+}
+
+func stackTypes(schema *types.Schemas) *types.Schemas {
+	return schema.
+		MustImportAndCustomize(&Version, v3.Stack{}, func(schema *types.Schema) {
+			schema.ResourceActions = map[string]types.Action{
+				"upgrade": {
+					Input: "templateVersionId",
+				},
+				"rollback": {
+					Input: "revision",
 				},
 			}
 		})

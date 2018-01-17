@@ -44,7 +44,8 @@ type TokenLister interface {
 type TokenController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() TokenLister
-	AddHandler(handler TokenHandlerFunc)
+	AddHandler(name string, handler TokenHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler TokenHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +63,10 @@ type TokenInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() TokenController
-	AddSyncHandler(sync TokenHandlerFunc)
+	AddHandler(name string, sync TokenHandlerFunc)
 	AddLifecycle(name string, lifecycle TokenLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync TokenHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle TokenLifecycle)
 }
 
 type tokenLister struct {
@@ -107,8 +110,8 @@ func (c *tokenController) Lister() TokenLister {
 	}
 }
 
-func (c *tokenController) AddHandler(handler TokenHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *tokenController) AddHandler(name string, handler TokenHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +119,24 @@ func (c *tokenController) AddHandler(handler TokenHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*Token))
+	})
+}
+
+func (c *tokenController) AddClusterScopedHandler(name, cluster string, handler TokenHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*Token))
 	})
 }
@@ -211,11 +232,20 @@ func (s *tokenClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpt
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *tokenClient) AddSyncHandler(sync TokenHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *tokenClient) AddHandler(name string, sync TokenHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *tokenClient) AddLifecycle(name string, lifecycle TokenLifecycle) {
-	sync := NewTokenLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewTokenLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *tokenClient) AddClusterScopedHandler(name, clusterName string, sync TokenHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *tokenClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle TokenLifecycle) {
+	sync := NewTokenLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

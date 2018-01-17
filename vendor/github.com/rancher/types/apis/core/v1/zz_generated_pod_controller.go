@@ -46,7 +46,8 @@ type PodLister interface {
 type PodController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() PodLister
-	AddHandler(handler PodHandlerFunc)
+	AddHandler(name string, handler PodHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler PodHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -64,8 +65,10 @@ type PodInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() PodController
-	AddSyncHandler(sync PodHandlerFunc)
+	AddHandler(name string, sync PodHandlerFunc)
 	AddLifecycle(name string, lifecycle PodLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync PodHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle PodLifecycle)
 }
 
 type podLister struct {
@@ -109,8 +112,8 @@ func (c *podController) Lister() PodLister {
 	}
 }
 
-func (c *podController) AddHandler(handler PodHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *podController) AddHandler(name string, handler PodHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -118,6 +121,24 @@ func (c *podController) AddHandler(handler PodHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*v1.Pod))
+	})
+}
+
+func (c *podController) AddClusterScopedHandler(name, cluster string, handler PodHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*v1.Pod))
 	})
 }
@@ -213,11 +234,20 @@ func (s *podClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts 
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *podClient) AddSyncHandler(sync PodHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *podClient) AddHandler(name string, sync PodHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *podClient) AddLifecycle(name string, lifecycle PodLifecycle) {
-	sync := NewPodLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewPodLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *podClient) AddClusterScopedHandler(name, clusterName string, sync PodHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *podClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle PodLifecycle) {
+	sync := NewPodLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }
