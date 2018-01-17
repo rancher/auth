@@ -128,9 +128,17 @@ func (s *tokenAPIServer) listTokens(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := model.TokenCollection{
+		Type:         "collection",
+		ResourceType: "token",
+		Links:        &model.Links{Self: r.Host + r.URL.String()},
+		Data:         tokens,
+	}
+
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
-	enc.Encode(tokens)
+	w.Header().Set("Content-Type", "application/json")
+	enc.Encode(resp)
 
 }
 
