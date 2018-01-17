@@ -3,6 +3,8 @@ package tokens
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/rancher/auth/providers"
 	"github.com/rancher/types/apis/management.cattle.io/v3"
@@ -189,11 +191,27 @@ func (s *tokenAPIServer) getTokens(tokenID string) ([]v3.Token, int, error) {
 	}
 
 	for _, t := range tokenList.Items {
-		if t.IsDerived {
+		if isNotExpired(t) {
 			tokens = append(tokens, t)
 		}
 	}
 	return tokens, 0, nil
+}
+
+func isNotExpired(token v3.Token) bool {
+	created := token.ObjectMeta.CreationTimestamp.Time
+	durationElapsed := time.Since(created)
+
+	ttlDuration, err := time.ParseDuration(strconv.Itoa(token.TTLMillis) + "ms")
+	if err != nil {
+		logrus.Errorf("Error parsing ttl %v", err)
+		return false
+	}
+
+	if durationElapsed.Seconds() <= ttlDuration.Seconds() {
+		return true
+	}
+	return false
 }
 
 func (s *tokenAPIServer) deleteToken(tokenKey string) (int, error) {
