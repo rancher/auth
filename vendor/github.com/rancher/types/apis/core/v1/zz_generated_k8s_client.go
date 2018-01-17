@@ -18,8 +18,10 @@ type Interface interface {
 	ComponentStatusesGetter
 	NamespacesGetter
 	EventsGetter
+	EndpointsGetter
 	PodsGetter
 	ServicesGetter
+	SecretsGetter
 }
 
 type Client struct {
@@ -31,8 +33,10 @@ type Client struct {
 	componentStatusControllers map[string]ComponentStatusController
 	namespaceControllers       map[string]NamespaceController
 	eventControllers           map[string]EventController
+	endpointsControllers       map[string]EndpointsController
 	podControllers             map[string]PodController
 	serviceControllers         map[string]ServiceController
+	secretControllers          map[string]SecretController
 }
 
 func NewForConfig(config rest.Config) (Interface, error) {
@@ -53,8 +57,10 @@ func NewForConfig(config rest.Config) (Interface, error) {
 		componentStatusControllers: map[string]ComponentStatusController{},
 		namespaceControllers:       map[string]NamespaceController{},
 		eventControllers:           map[string]EventController{},
+		endpointsControllers:       map[string]EndpointsController{},
 		podControllers:             map[string]PodController{},
 		serviceControllers:         map[string]ServiceController{},
+		secretControllers:          map[string]SecretController{},
 	}, nil
 }
 
@@ -122,6 +128,19 @@ func (c *Client) Events(namespace string) EventInterface {
 	}
 }
 
+type EndpointsGetter interface {
+	Endpoints(namespace string) EndpointsInterface
+}
+
+func (c *Client) Endpoints(namespace string) EndpointsInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &EndpointsResource, EndpointsGroupVersionKind, endpointsFactory{})
+	return &endpointsClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
 type PodsGetter interface {
 	Pods(namespace string) PodInterface
 }
@@ -142,6 +161,19 @@ type ServicesGetter interface {
 func (c *Client) Services(namespace string) ServiceInterface {
 	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &ServiceResource, ServiceGroupVersionKind, serviceFactory{})
 	return &serviceClient{
+		ns:           namespace,
+		client:       c,
+		objectClient: objectClient,
+	}
+}
+
+type SecretsGetter interface {
+	Secrets(namespace string) SecretInterface
+}
+
+func (c *Client) Secrets(namespace string) SecretInterface {
+	objectClient := clientbase.NewObjectClient(namespace, c.restClient, &SecretResource, SecretGroupVersionKind, secretFactory{})
+	return &secretClient{
 		ns:           namespace,
 		client:       c,
 		objectClient: objectClient,

@@ -46,7 +46,8 @@ type ServiceLister interface {
 type ServiceController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ServiceLister
-	AddHandler(handler ServiceHandlerFunc)
+	AddHandler(name string, handler ServiceHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler ServiceHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -64,8 +65,10 @@ type ServiceInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ServiceController
-	AddSyncHandler(sync ServiceHandlerFunc)
+	AddHandler(name string, sync ServiceHandlerFunc)
 	AddLifecycle(name string, lifecycle ServiceLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync ServiceHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle ServiceLifecycle)
 }
 
 type serviceLister struct {
@@ -109,8 +112,8 @@ func (c *serviceController) Lister() ServiceLister {
 	}
 }
 
-func (c *serviceController) AddHandler(handler ServiceHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *serviceController) AddHandler(name string, handler ServiceHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -118,6 +121,24 @@ func (c *serviceController) AddHandler(handler ServiceHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*v1.Service))
+	})
+}
+
+func (c *serviceController) AddClusterScopedHandler(name, cluster string, handler ServiceHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*v1.Service))
 	})
 }
@@ -213,11 +234,20 @@ func (s *serviceClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listO
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *serviceClient) AddSyncHandler(sync ServiceHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *serviceClient) AddHandler(name string, sync ServiceHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *serviceClient) AddLifecycle(name string, lifecycle ServiceLifecycle) {
-	sync := NewServiceLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewServiceLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *serviceClient) AddClusterScopedHandler(name, clusterName string, sync ServiceHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *serviceClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle ServiceLifecycle) {
+	sync := NewServiceLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

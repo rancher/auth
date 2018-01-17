@@ -23,8 +23,9 @@ var (
 	ClusterRegistrationTokenResource = metav1.APIResource{
 		Name:         "clusterregistrationtokens",
 		SingularName: "clusterregistrationtoken",
-		Namespaced:   false,
-		Kind:         ClusterRegistrationTokenGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: ClusterRegistrationTokenGroupVersionKind.Kind,
 	}
 )
 
@@ -44,7 +45,8 @@ type ClusterRegistrationTokenLister interface {
 type ClusterRegistrationTokenController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ClusterRegistrationTokenLister
-	AddHandler(handler ClusterRegistrationTokenHandlerFunc)
+	AddHandler(name string, handler ClusterRegistrationTokenHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler ClusterRegistrationTokenHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +64,10 @@ type ClusterRegistrationTokenInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ClusterRegistrationTokenController
-	AddSyncHandler(sync ClusterRegistrationTokenHandlerFunc)
+	AddHandler(name string, sync ClusterRegistrationTokenHandlerFunc)
 	AddLifecycle(name string, lifecycle ClusterRegistrationTokenLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync ClusterRegistrationTokenHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle ClusterRegistrationTokenLifecycle)
 }
 
 type clusterRegistrationTokenLister struct {
@@ -107,8 +111,8 @@ func (c *clusterRegistrationTokenController) Lister() ClusterRegistrationTokenLi
 	}
 }
 
-func (c *clusterRegistrationTokenController) AddHandler(handler ClusterRegistrationTokenHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *clusterRegistrationTokenController) AddHandler(name string, handler ClusterRegistrationTokenHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +120,24 @@ func (c *clusterRegistrationTokenController) AddHandler(handler ClusterRegistrat
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*ClusterRegistrationToken))
+	})
+}
+
+func (c *clusterRegistrationTokenController) AddClusterScopedHandler(name, cluster string, handler ClusterRegistrationTokenHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*ClusterRegistrationToken))
 	})
 }
@@ -211,11 +233,20 @@ func (s *clusterRegistrationTokenClient) DeleteCollection(deleteOpts *metav1.Del
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *clusterRegistrationTokenClient) AddSyncHandler(sync ClusterRegistrationTokenHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *clusterRegistrationTokenClient) AddHandler(name string, sync ClusterRegistrationTokenHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *clusterRegistrationTokenClient) AddLifecycle(name string, lifecycle ClusterRegistrationTokenLifecycle) {
-	sync := NewClusterRegistrationTokenLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewClusterRegistrationTokenLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *clusterRegistrationTokenClient) AddClusterScopedHandler(name, clusterName string, sync ClusterRegistrationTokenHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *clusterRegistrationTokenClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle ClusterRegistrationTokenLifecycle) {
+	sync := NewClusterRegistrationTokenLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

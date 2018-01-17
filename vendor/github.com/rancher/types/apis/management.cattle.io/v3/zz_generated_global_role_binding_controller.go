@@ -44,7 +44,8 @@ type GlobalRoleBindingLister interface {
 type GlobalRoleBindingController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() GlobalRoleBindingLister
-	AddHandler(handler GlobalRoleBindingHandlerFunc)
+	AddHandler(name string, handler GlobalRoleBindingHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler GlobalRoleBindingHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +63,10 @@ type GlobalRoleBindingInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() GlobalRoleBindingController
-	AddSyncHandler(sync GlobalRoleBindingHandlerFunc)
+	AddHandler(name string, sync GlobalRoleBindingHandlerFunc)
 	AddLifecycle(name string, lifecycle GlobalRoleBindingLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync GlobalRoleBindingHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle GlobalRoleBindingLifecycle)
 }
 
 type globalRoleBindingLister struct {
@@ -107,8 +110,8 @@ func (c *globalRoleBindingController) Lister() GlobalRoleBindingLister {
 	}
 }
 
-func (c *globalRoleBindingController) AddHandler(handler GlobalRoleBindingHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *globalRoleBindingController) AddHandler(name string, handler GlobalRoleBindingHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +119,24 @@ func (c *globalRoleBindingController) AddHandler(handler GlobalRoleBindingHandle
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*GlobalRoleBinding))
+	})
+}
+
+func (c *globalRoleBindingController) AddClusterScopedHandler(name, cluster string, handler GlobalRoleBindingHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*GlobalRoleBinding))
 	})
 }
@@ -211,11 +232,20 @@ func (s *globalRoleBindingClient) DeleteCollection(deleteOpts *metav1.DeleteOpti
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *globalRoleBindingClient) AddSyncHandler(sync GlobalRoleBindingHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *globalRoleBindingClient) AddHandler(name string, sync GlobalRoleBindingHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *globalRoleBindingClient) AddLifecycle(name string, lifecycle GlobalRoleBindingLifecycle) {
-	sync := NewGlobalRoleBindingLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewGlobalRoleBindingLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *globalRoleBindingClient) AddClusterScopedHandler(name, clusterName string, sync GlobalRoleBindingHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *globalRoleBindingClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle GlobalRoleBindingLifecycle) {
+	sync := NewGlobalRoleBindingLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

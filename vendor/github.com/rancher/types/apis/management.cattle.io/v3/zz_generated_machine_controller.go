@@ -23,8 +23,9 @@ var (
 	MachineResource = metav1.APIResource{
 		Name:         "machines",
 		SingularName: "machine",
-		Namespaced:   false,
-		Kind:         MachineGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: MachineGroupVersionKind.Kind,
 	}
 )
 
@@ -44,7 +45,8 @@ type MachineLister interface {
 type MachineController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() MachineLister
-	AddHandler(handler MachineHandlerFunc)
+	AddHandler(name string, handler MachineHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler MachineHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +64,10 @@ type MachineInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() MachineController
-	AddSyncHandler(sync MachineHandlerFunc)
+	AddHandler(name string, sync MachineHandlerFunc)
 	AddLifecycle(name string, lifecycle MachineLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync MachineHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle MachineLifecycle)
 }
 
 type machineLister struct {
@@ -107,8 +111,8 @@ func (c *machineController) Lister() MachineLister {
 	}
 }
 
-func (c *machineController) AddHandler(handler MachineHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *machineController) AddHandler(name string, handler MachineHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +120,24 @@ func (c *machineController) AddHandler(handler MachineHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*Machine))
+	})
+}
+
+func (c *machineController) AddClusterScopedHandler(name, cluster string, handler MachineHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*Machine))
 	})
 }
@@ -211,11 +233,20 @@ func (s *machineClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, listO
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *machineClient) AddSyncHandler(sync MachineHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *machineClient) AddHandler(name string, sync MachineHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *machineClient) AddLifecycle(name string, lifecycle MachineLifecycle) {
-	sync := NewMachineLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewMachineLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *machineClient) AddClusterScopedHandler(name, clusterName string, sync MachineHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *machineClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle MachineLifecycle) {
+	sync := NewMachineLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }

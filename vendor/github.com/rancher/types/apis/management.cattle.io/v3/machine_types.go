@@ -2,6 +2,7 @@ package v3
 
 import (
 	"github.com/rancher/norman/condition"
+	"github.com/rancher/norman/types"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -44,6 +45,8 @@ type MachineTemplateSpec struct {
 }
 
 type Machine struct {
+	types.Namespaced
+
 	metav1.TypeMeta `json:",inline"`
 	// Standard object’s metadata. More info:
 	// https://github.com/kubernetes/community/blob/master/contributors/devel/api-conventions.md#metadata
@@ -60,13 +63,15 @@ type MachineStatus struct {
 	Conditions          []MachineCondition   `json:"conditions,omitempty"`
 	NodeStatus          v1.NodeStatus        `json:"nodeStatus,omitempty"`
 	NodeName            string               `json:"nodeName,omitempty"`
-	ClusterName         string               `json:"clusterName,omitempty" norman:"type=reference[cluster]"`
 	Requested           v1.ResourceList      `json:"requested,omitempty"`
 	Limits              v1.ResourceList      `json:"limits,omitempty"`
 	MachineTemplateSpec *MachineTemplateSpec `json:"machineTemplateSpec,omitempty"`
 	NodeConfig          *RKEConfigNode       `json:"rkeNode,omitempty"`
 	SSHUser             string               `json:"sshUser,omitempty"`
 	MachineDriverConfig string               `json:"machineDriverConfig,omitempty"`
+	NodeAnnotations     map[string]string    `json:"nodeAnnotations,omitempty"`
+	NodeLabels          map[string]string    `json:"nodeLabels,omitempty"`
+	Token               string               `json:"token"`
 }
 
 var (
@@ -91,14 +96,20 @@ type MachineCondition struct {
 	Message string `json:"message,omitempty"`
 }
 
+type MachineConfig struct {
+	MachineSpec
+	Labels      map[string]string `json:"labels"`
+	Annotations map[string]string `json:"annotations"`
+}
+
 type MachineSpec struct {
-	NodeSpec             v1.NodeSpec `json:"nodeSpec"`
-	DisplayName          string      `json:"displayName,omitempty"`
-	RequestedHostname    string      `json:"requestedHostname,omitempty" norman:"noupdate"`
-	RequestedClusterName string      `json:"requestedClusterName,omitempty" norman:"type=reference[cluster],noupdate"`
-	RequestedRoles       []string    `json:"requestedRoles,omitempty" norman:"noupdate"`
-	MachineTemplateName  string      `json:"machineTemplateName,omitempty" norman:"type=reference[machineTemplate],noupdate"`
-	Description          string      `json:"description,omitempty"`
+	NodeSpec            v1.NodeSpec `json:"nodeSpec"`
+	Description         string      `json:"description,omitempty"`
+	DisplayName         string      `json:"displayName,omitempty"`
+	RequestedHostname   string      `json:"requestedHostname,omitempty" norman:"noupdate"`
+	ClusterName         string      `json:"clusterName,omitempty" norman:"type=reference[cluster],noupdate,required"`
+	Role                []string    `json:"role,omitempty" norman:"noupdate"`
+	MachineTemplateName string      `json:"machineTemplateName,omitempty" norman:"type=reference[machineTemplate],noupdate"`
 }
 
 type MachineCommonParams struct {
@@ -131,6 +142,12 @@ type MachineDriverStatus struct {
 	Conditions []MachineDriverCondition `json:"conditions"`
 }
 
+var (
+	MachineDriverConditionDownloaded condition.Cond = "Downloaded"
+	MachineDriverConditionActive     condition.Cond = "Active"
+	MachineDriverConditionInactive   condition.Cond = "Inactive"
+)
+
 type MachineDriverCondition struct {
 	// Type of cluster condition.
 	Type string `json:"type"`
@@ -142,9 +159,12 @@ type MachineDriverCondition struct {
 	LastTransitionTime string `json:"lastTransitionTime,omitempty"`
 	// The reason for the condition's last transition.
 	Reason string `json:"reason,omitempty"`
+	// Human-readable message indicating details about last transition
+	Message string `json:"message,omitempty"`
 }
 
 type MachineDriverSpec struct {
+	DisplayName string `json:"displayName"`
 	Description string `json:"description"`
 	URL         string `json:"url"`
 	ExternalID  string `json:"externalId"`

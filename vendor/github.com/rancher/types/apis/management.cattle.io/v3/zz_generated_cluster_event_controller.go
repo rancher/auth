@@ -23,8 +23,9 @@ var (
 	ClusterEventResource = metav1.APIResource{
 		Name:         "clusterevents",
 		SingularName: "clusterevent",
-		Namespaced:   false,
-		Kind:         ClusterEventGroupVersionKind.Kind,
+		Namespaced:   true,
+
+		Kind: ClusterEventGroupVersionKind.Kind,
 	}
 )
 
@@ -44,7 +45,8 @@ type ClusterEventLister interface {
 type ClusterEventController interface {
 	Informer() cache.SharedIndexInformer
 	Lister() ClusterEventLister
-	AddHandler(handler ClusterEventHandlerFunc)
+	AddHandler(name string, handler ClusterEventHandlerFunc)
+	AddClusterScopedHandler(name, clusterName string, handler ClusterEventHandlerFunc)
 	Enqueue(namespace, name string)
 	Sync(ctx context.Context) error
 	Start(ctx context.Context, threadiness int) error
@@ -62,8 +64,10 @@ type ClusterEventInterface interface {
 	Watch(opts metav1.ListOptions) (watch.Interface, error)
 	DeleteCollection(deleteOpts *metav1.DeleteOptions, listOpts metav1.ListOptions) error
 	Controller() ClusterEventController
-	AddSyncHandler(sync ClusterEventHandlerFunc)
+	AddHandler(name string, sync ClusterEventHandlerFunc)
 	AddLifecycle(name string, lifecycle ClusterEventLifecycle)
+	AddClusterScopedHandler(name, clusterName string, sync ClusterEventHandlerFunc)
+	AddClusterScopedLifecycle(name, clusterName string, lifecycle ClusterEventLifecycle)
 }
 
 type clusterEventLister struct {
@@ -107,8 +111,8 @@ func (c *clusterEventController) Lister() ClusterEventLister {
 	}
 }
 
-func (c *clusterEventController) AddHandler(handler ClusterEventHandlerFunc) {
-	c.GenericController.AddHandler(func(key string) error {
+func (c *clusterEventController) AddHandler(name string, handler ClusterEventHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
 		obj, exists, err := c.Informer().GetStore().GetByKey(key)
 		if err != nil {
 			return err
@@ -116,6 +120,24 @@ func (c *clusterEventController) AddHandler(handler ClusterEventHandlerFunc) {
 		if !exists {
 			return handler(key, nil)
 		}
+		return handler(key, obj.(*ClusterEvent))
+	})
+}
+
+func (c *clusterEventController) AddClusterScopedHandler(name, cluster string, handler ClusterEventHandlerFunc) {
+	c.GenericController.AddHandler(name, func(key string) error {
+		obj, exists, err := c.Informer().GetStore().GetByKey(key)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return handler(key, nil)
+		}
+
+		if !controller.ObjectInCluster(cluster, obj) {
+			return nil
+		}
+
 		return handler(key, obj.(*ClusterEvent))
 	})
 }
@@ -211,11 +233,20 @@ func (s *clusterEventClient) DeleteCollection(deleteOpts *metav1.DeleteOptions, 
 	return s.objectClient.DeleteCollection(deleteOpts, listOpts)
 }
 
-func (s *clusterEventClient) AddSyncHandler(sync ClusterEventHandlerFunc) {
-	s.Controller().AddHandler(sync)
+func (s *clusterEventClient) AddHandler(name string, sync ClusterEventHandlerFunc) {
+	s.Controller().AddHandler(name, sync)
 }
 
 func (s *clusterEventClient) AddLifecycle(name string, lifecycle ClusterEventLifecycle) {
-	sync := NewClusterEventLifecycleAdapter(name, s, lifecycle)
-	s.AddSyncHandler(sync)
+	sync := NewClusterEventLifecycleAdapter(name, false, s, lifecycle)
+	s.AddHandler(name, sync)
+}
+
+func (s *clusterEventClient) AddClusterScopedHandler(name, clusterName string, sync ClusterEventHandlerFunc) {
+	s.Controller().AddClusterScopedHandler(name, clusterName, sync)
+}
+
+func (s *clusterEventClient) AddClusterScopedLifecycle(name, clusterName string, lifecycle ClusterEventLifecycle) {
+	sync := NewClusterEventLifecycleAdapter(name+"_"+clusterName, true, s, lifecycle)
+	s.AddClusterScopedHandler(name, clusterName, sync)
 }
