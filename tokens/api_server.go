@@ -86,6 +86,11 @@ func (s *tokenAPIServer) createLoginToken(jsonInput v3.LoginInput) (v3.Token, in
 
 	logrus.Debug("User Authenticated")
 
+	return s.generateNewLoginToken(userPrincipal, groupPrincipals, providerInfo)
+	
+}	
+
+func (s *tokenAPIServer) generateNewLoginToken(userPrincipal v3.Principal, groupPrincipals []v3.Principal, providerInfo map[string]string) (v3.Token, int, error) {
 	key, err := generateKey()
 	if err != nil {
 		logrus.Errorf("Failed to generate token key: %v", err)

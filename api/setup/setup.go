@@ -9,7 +9,7 @@ import (
 	"github.com/rancher/types/client/management/v3"
 	"github.com/rancher/types/config"
 
-	"github.com/rancher/auth/tokens"
+	"github.com/rancher/auth/authconfig"
 )
 
 var (
@@ -20,7 +20,7 @@ var (
 
 func Schemas(ctx context.Context, management *config.ManagementContext, schemas *types.Schemas) error {
 
-	Token(schemas)
+	GithubConfig(schemas)
 
 	crdStore, err := crd.NewCRDStoreFromConfig(management.RESTConfig)
 	if err != nil {
@@ -37,17 +37,8 @@ func Schemas(ctx context.Context, management *config.ManagementContext, schemas 
 	return crdStore.AddSchemas(ctx, crdSchemas...)
 }
 
-func Token(schemas *types.Schemas) {
-	schema := schemas.Schema(&managementSchema.Version, client.TokenType)
-	schema.CollectionActions = map[string]types.Action{
-		"login": {
-			Input:  "loginInput",
-			Output: "token",
-		},
-		"logout": {},
-	}
-	schema.ActionHandler = tokens.TokenActionHandler
-	schema.ListHandler = tokens.TokenListHandler
-	schema.CreateHandler = tokens.TokenCreateHandler
-	schema.DeleteHandler = tokens.TokenDeleteHandler
+func GithubConfig(schemas *types.Schemas) {
+	schema := schemas.Schema(&managementSchema.Version, client.GithubConfigType)
+	schema.Formatter = authconfig.GithubConfigFormatter
+	schema.ActionHandler = authconfig.GithubConfigActionHandler
 }

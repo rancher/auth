@@ -10,8 +10,6 @@ import (
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 	"github.com/rancher/types/config"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/rancher/auth/model"
 )
 
 //Constants for github
@@ -21,21 +19,22 @@ const (
 
 //GProvider implements an PrincipalProvider for github
 type GProvider struct {
+	ctx         context.Context
+	githubConfigs v3.GithubConfigLister
+	githubConfigClient v3.GithubConfigInterface
 	githubClient *GClient
 }
 
 func Configure(ctx context.Context, mgmtCtx *config.ManagementContext) *GProvider {
-	configObj := model.DefaultGithubConfig()
-
-	client := &http.Client{}
-	githubClient := &GClient{}
-	githubClient.httpClient = client
-	githubClient.config = configObj.GithubConfig
-
-	g := &GProvider{}
-	g.githubClient = githubClient
-
-	return g
+	githubClient := &GClient{
+		httpClient: &http.Client{},
+	}
+	return &GProvider{
+		ctx:         ctx,
+		githubConfigs:      mgmtCtx.Management.GithubConfigs("").Controller().Lister(),
+		githubConfigClient: mgmtCtx.Management.GithubConfigs(""),
+		githubClient: githubClient,
+	}
 }
 
 //GetName returns the name of the provider
@@ -43,15 +42,64 @@ func (g *GProvider) GetName() string {
 	return Name
 }
 
+func (g *GProvider) getGithubConfigCR() (*v3.GithubConfig, error) {
+	storedGithubConfig, err := g.githubConfigs.Get("", "github")
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve GithubConfig, error: %v", err)
+	}
+	return storedGithubConfig, nil
+}
+
+func (g *GProvider) SaveGithubConfig(config *v3.GithubConfig) error {
+	existingConfig, err = g.getGithubConfigCR()
+	createNew := false
+	if err != nil {
+		if e, ok := err.(*errors.StatusError); ok && e.ErrStatus.Code == 404 {
+			createNew = true
+		} else {
+			return err
+		}
+	}
+	if createNew {
+		config.APIVersion = "management.cattle.io/v3"
+		config.Kind = "GithubConfig" //AuthConfig??
+		config.ObjectMeta = metav1.ObjectMeta{
+			Name:   "github",
+		}
+		createdConfig, err := g.githubConfigClient.Create(config)
+		if err != nil {
+			return err
+		}
+	} else {
+		updatedConfig, err := g.githubConfigClient.Update(config)
+		if err != nil {
+			return err
+		}		
+	}
+	return nil
+}
+
 func (g *GProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []v3.Principal, map[string]string, int, error) {
+	return g.LoginUser(loginInput.GithubCredential, nil)
+}
+
+func (g *GProvider) LoginUser(githubCredential v3.GithubCredential, config *v3.GithubConfig) (v3.Principal, []v3.Principal, map[string]string, int, error) {
 	var groupPrincipals []v3.Principal
 	var userPrincipal v3.Principal
 	var providerInfo = make(map[string]string)
+	var err error
 
-	securityCode := loginInput.GithubCredential.Code
+	if config == nil {
+		config, err = g.getGithubConfigCR()
+		if err != nil {
+			return userPrincipal, groupPrincipals, providerInfo, 401, err
+		}
+	}
+
+	securityCode := githubCredential.Code
 
 	logrus.Debugf("GitHubIdentityProvider AuthenticateUser called for securityCode %v", securityCode)
-	accessToken, err := g.githubClient.getAccessToken(securityCode)
+	accessToken, err := g.githubClient.getAccessToken(securityCode, config)
 	if err != nil {
 		logrus.Infof("Error generating accessToken from github %v", err)
 		return userPrincipal, groupPrincipals, providerInfo, 401, err
@@ -60,7 +108,7 @@ func (g *GProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []
 
 	providerInfo["access_token"] = accessToken
 
-	user, err := g.githubClient.getGithubUser(accessToken)
+	user, err := g.githubClient.getGithubUser(accessToken, config)
 	if err != nil {
 		return userPrincipal, groupPrincipals, providerInfo, 401, fmt.Errorf("Error getting github user %v", err)
 	}
@@ -72,7 +120,7 @@ func (g *GProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []
 		Me:          true,
 	}
 
-	orgAccts, err := g.githubClient.getGithubOrgs(accessToken)
+	orgAccts, err := g.githubClient.getGithubOrgs(accessToken, config)
 	if err != nil {
 		logrus.Errorf("Failed to get orgs for github user: %v, err: %v", user.Name, err)
 		return userPrincipal, groupPrincipals, providerInfo, 500, fmt.Errorf("Error getting orgs for github user %v", err)
@@ -87,7 +135,7 @@ func (g *GProvider) AuthenticateUser(loginInput v3.LoginInput) (v3.Principal, []
 		groupPrincipals = append(groupPrincipals, groupPrincipal)
 	}
 
-	teamAccts, err := g.githubClient.getGithubTeams(accessToken)
+	teamAccts, err := g.githubClient.getGithubTeams(accessToken, config)
 	if err != nil {
 		logrus.Errorf("Failed to get teams for github user: %v, err: %v", user.Name, err)
 		return userPrincipal, groupPrincipals, providerInfo, 500, fmt.Errorf("Error getting teams for github user %v", err)
@@ -111,10 +159,15 @@ func (g *GProvider) SearchPrincipals(searchKey string, myToken v3.Token) ([]v3.P
 	if myToken.AuthProvider != g.GetName() {
 		return principals, 0, nil
 	}
+	
+	config, err := g.getGithubConfigCR()
+	if err != nil {
+		return principals, 0, nil
+	}	
 
 	accessToken := myToken.ProviderInfo["access_token"]
 
-	user, err := g.githubClient.getGithubUserByName(searchKey, accessToken)
+	user, err := g.githubClient.getGithubUserByName(searchKey, accessToken, config)
 	if err == nil {
 		userPrincipal := v3.Principal{
 			ObjectMeta:  metav1.ObjectMeta{Name: Name + "_user://" + strconv.Itoa(user.ID)},
@@ -129,7 +182,7 @@ func (g *GProvider) SearchPrincipals(searchKey string, myToken v3.Token) ([]v3.P
 		principals = append(principals, userPrincipal)
 	}
 
-	orgAcct, err := g.githubClient.getGithubOrgByName(searchKey, accessToken)
+	orgAcct, err := g.githubClient.getGithubOrgByName(searchKey, accessToken, config)
 	if err == nil {
 		groupPrincipal := v3.Principal{
 			ObjectMeta:  metav1.ObjectMeta{Name: Name + "_org://" + strconv.Itoa(orgAcct.ID)},
