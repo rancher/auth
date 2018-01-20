@@ -192,7 +192,11 @@ func parseRequestURL(r *http.Request) string {
 	}
 
 	// Use incoming url
-	return fmt.Sprintf("http://%s%s", r.Host, r.URL.Path)
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.Path)
 }
 
 func getURLFromStandardHeaders(r *http.Request) string {
@@ -261,4 +265,9 @@ func parseResponseURLBase(requestURL string, r *http.Request) (string, error) {
 
 func (u *urlBuilder) Action(action string, resource *types.RawResource) string {
 	return u.constructBasicURL(resource.Schema.Version, resource.Schema.PluralName, resource.ID) + "?action=" + url.QueryEscape(action)
+}
+
+func (u *urlBuilder) CollectionAction(schema *types.Schema, versionOverride *types.APIVersion, action string) string {
+	collectionURL := u.Collection(schema, versionOverride)
+	return collectionURL + "?action=" + url.QueryEscape(action)
 }
