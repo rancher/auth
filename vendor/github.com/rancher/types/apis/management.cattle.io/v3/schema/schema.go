@@ -99,14 +99,7 @@ func authzTypes(schemas *types.Schemas) *types.Schemas {
 		}).
 		MustImport(&Version, v3.GlobalRole{}).
 		MustImport(&Version, v3.GlobalRoleBinding{}).
-		MustImportAndCustomize(&Version, v3.RoleTemplate{}, func(schema *types.Schema) {
-			schema.MustCustomizeField("context", func(field types.Field) types.Field {
-				field.Type = "enum"
-				field.Options = []string{"cluster", "project"}
-				field.Nullable = false
-				return field
-			})
-		}).
+		MustImport(&Version, v3.RoleTemplate{}).
 		MustImport(&Version, v3.PodSecurityPolicyTemplate{}).
 		MustImportAndCustomize(&Version, v3.ClusterRoleTemplateBinding{}, func(schema *types.Schema) {
 			schema.MustCustomizeField("subjectKind", func(field types.Field) types.Field {
@@ -204,6 +197,7 @@ func authnTypes(schemas *types.Schemas) *types.Schemas {
 		MustImport(&Version, v3.LocalCredential{}).
 		MustImport(&Version, v3.GithubCredential{}).
 		MustImport(&Version, v3.ChangePasswordInput{}).
+		MustImport(&Version, v3.SetPasswordInput{}).
 		MustImportAndCustomize(&Version, v3.Token{}, func(schema *types.Schema) {
 			schema.CollectionActions = map[string]types.Action{
 				"login": {
@@ -215,9 +209,14 @@ func authnTypes(schemas *types.Schemas) *types.Schemas {
 		}).
 		MustImportAndCustomize(&Version, v3.User{}, func(schema *types.Schema) {
 			schema.ResourceActions = map[string]types.Action{
-				"changepassword": {
-					Input:  "changePasswordInput",
+				"setpassword": {
+					Input:  "setPasswordInput",
 					Output: "user",
+				},
+			}
+			schema.CollectionActions = map[string]types.Action{
+				"changepassword": {
+					Input: "changePasswordInput",
 				},
 			}
 		})
