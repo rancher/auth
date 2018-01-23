@@ -15,7 +15,6 @@ import (
 	"github.com/rancher/norman/types/convert"
 	"github.com/rancher/types/apis/management.cattle.io/v3"
 
-	"github.com/rancher/auth/model"
 	"github.com/rancher/auth/util"
 )
 
@@ -53,6 +52,10 @@ func TokenListHandler(request *types.APIContext) error {
 func TokenDeleteHandler(request *types.APIContext) error {
 	logrus.Debugf("TokenDeleteHandler called")
 	return tokenServer.removeToken(request)
+}
+
+func CreateTokenCR(k8sToken *v3.Token) (v3.Token, error) {
+	return tokenServer.createK8sTokenCR(k8sToken)
 }
 
 //login is a handler for route /tokens?action=login and returns the jwt token after authenticating the user
@@ -329,18 +332,4 @@ func deleteTokenUsingStore(request *types.APIContext, tokenID string) (map[strin
 		return nil, err
 	}
 	return tokenData, nil
-}
-
-func (s *tokenAPIServer) authConfigs(w http.ResponseWriter, r *http.Request) {
-
-	var authConfigs []model.AuthConfig
-
-	authConfigs = append(authConfigs, model.DefaultGithubConfig())
-	authConfigs = append(authConfigs, model.DefaultLocalConfig())
-
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
-	enc.Encode(authConfigs)
-
 }

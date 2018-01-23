@@ -10,8 +10,8 @@ import (
 	"github.com/rancher/types/config"
 
 	"github.com/rancher/auth/api/setup"
-	"github.com/rancher/auth/tokens"
 	"github.com/rancher/auth/providers"
+	"github.com/rancher/auth/tokens"
 )
 
 var crdVersions = []*types.APIVersion{
@@ -33,7 +33,7 @@ func NewTokenAPIHandler(ctx context.Context, mgmtCtx *config.ManagementContext) 
 
 func new(ctx context.Context, mgmtCtx *config.ManagementContext) (http.Handler, error) {
 	providers.Configure(ctx, mgmtCtx)
-		
+
 	schemas := types.NewSchemas().AddSchemas(managementSchema.Schemas)
 
 	if err := setup.Schemas(ctx, mgmtCtx, schemas); err != nil {

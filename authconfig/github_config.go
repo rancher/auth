@@ -79,7 +79,7 @@ func GithubConfigTestApply(actionName string, action *types.Action, request *typ
 
 	githubConfig = githubConfigApplyInput.GithubConfig
 	githubCredential = githubConfigApplyInput.GithubCredential
-	
+
 	//Call provider to testLogin
 	p, err := providers.GetProvider("github")
 	if err != nil {
@@ -89,52 +89,48 @@ func GithubConfigTestApply(actionName string, action *types.Action, request *typ
 	if !ok {
 		return fmt.Errorf("No github provider")
 	}
-	
+
 	userPrincipal, groupPrincipals, providerInfo, status, err := githubProvider.LoginUser(githubCredential, &githubConfig)
 	if err != nil {
-		if status == 0 || status == 500{
+		if status == 0 || status == 500 {
 			status = http.StatusInternalServerError
 			return httperror.NewAPIErrorLong(status, "ServerError", fmt.Sprintf("Failed to login to github: %v", err))
 		}
 		return httperror.NewAPIErrorLong(status, "",
 			fmt.Sprintf("Failed to login to github: %v", err))
 	}
-	
+
 	//if this works, save githubConfig CR adding enabled flag
 	githubConfig.Enabled = githubConfigApplyInput.Enabled
-	err = githubProvider.SaveGithubConfig(githubConfig)
+	err = githubProvider.SaveGithubConfig(&githubConfig)
 	if err != nil {
 		return httperror.NewAPIError(httperror.ServerError, fmt.Sprintf("Failed to save github config: %v", err))
 	}
-	
-	//update User with github principalID?
-	
-	
+
+	//TODO: create new user or update exiting local User with github principals and use that userID in the token below.
+
 	//create a new token, set this token as the cookie and return 200
-	token, status, err := tokens.GenerateNewLoginToken(userPrincipal, groupPrincipals, providerInfo)
+	token := tokens.GenerateNewLoginToken(userPrincipal, groupPrincipals, providerInfo, 0, "Token via Github Configuration")
+	token, err = tokens.CreateTokenCR(&token)
 	if err != nil {
-		log.Errorf("Login failed with error: %v", err)
-		if status == 0 || status == 500 {
-			status = http.StatusInternalServerError
-			return httperror.NewAPIErrorLong(status, "ServerError", fmt.Sprintf("Failed to login to github: %v", err))
-		}
-		return httperror.NewAPIErrorLong(status, "", fmt.Sprintf("Failed to login to github: %v", err))
+		logrus.Errorf("Failed creating token with error: %v", err)
+		return httperror.NewAPIErrorLong(status, "", fmt.Sprintf("Failed creating token with error: %v", err))
 	}
-		
+
 	isSecure := false
 	if request.Request.URL.Scheme == "https" {
 		isSecure = true
 	}
 
-	tokenCookie := &http.Cookie {
+	tokenCookie := &http.Cookie{
 		Name:     tokens.CookieName,
-		Value:    token.Name,
+		Value:    token.ObjectMeta.Name + ":" + token.Token,
 		Secure:   isSecure,
 		Path:     "/",
 		HttpOnly: true,
 	}
-	http.SetCookie(w, tokenCookie)
+	http.SetCookie(request.Response, tokenCookie)
 	request.WriteResponse(http.StatusOK, nil)
-	
+
 	return nil
 }

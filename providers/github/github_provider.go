@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/sirupsen/logrus"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"net/http"
 	"strconv"
 
@@ -19,10 +20,10 @@ const (
 
 //GProvider implements an PrincipalProvider for github
 type GProvider struct {
-	ctx         context.Context
-	githubConfigs v3.GithubConfigLister
-	githubConfigClient v3.GithubConfigInterface
-	githubClient *GClient
+	ctx                context.Context
+	githubConfigLister v3.GithubConfigLister
+	githubConfigs      v3.GithubConfigInterface
+	githubClient       *GClient
 }
 
 func Configure(ctx context.Context, mgmtCtx *config.ManagementContext) *GProvider {
@@ -30,10 +31,10 @@ func Configure(ctx context.Context, mgmtCtx *config.ManagementContext) *GProvide
 		httpClient: &http.Client{},
 	}
 	return &GProvider{
-		ctx:         ctx,
-		githubConfigs:      mgmtCtx.Management.GithubConfigs("").Controller().Lister(),
-		githubConfigClient: mgmtCtx.Management.GithubConfigs(""),
-		githubClient: githubClient,
+		ctx:                ctx,
+		githubConfigLister: mgmtCtx.Management.GithubConfigs("").Controller().Lister(),
+		githubConfigs:      mgmtCtx.Management.GithubConfigs(""),
+		githubClient:       githubClient,
 	}
 }
 
@@ -43,7 +44,8 @@ func (g *GProvider) GetName() string {
 }
 
 func (g *GProvider) getGithubConfigCR() (*v3.GithubConfig, error) {
-	storedGithubConfig, err := g.githubConfigs.Get("", "github")
+	//storedGithubConfig, err := g.githubConfigs.Get("", "github")
+	storedGithubConfig, err := g.githubConfigs.Get("github", metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to retrieve GithubConfig, error: %v", err)
 	}
@@ -51,30 +53,33 @@ func (g *GProvider) getGithubConfigCR() (*v3.GithubConfig, error) {
 }
 
 func (g *GProvider) SaveGithubConfig(config *v3.GithubConfig) error {
-	existingConfig, err = g.getGithubConfigCR()
+	storedConfig, err := g.getGithubConfigCR()
 	createNew := false
 	if err != nil {
-		if e, ok := err.(*errors.StatusError); ok && e.ErrStatus.Code == 404 {
+		if apierrors.IsNotFound(err) {
 			createNew = true
 		} else {
 			return err
 		}
 	}
+	config.APIVersion = "management.cattle.io/v3"
+	config.Kind = "GithubConfig" //AuthConfig??
+	config.ObjectMeta = metav1.ObjectMeta{
+		Name: "github",
+	}
 	if createNew {
-		config.APIVersion = "management.cattle.io/v3"
-		config.Kind = "GithubConfig" //AuthConfig??
-		config.ObjectMeta = metav1.ObjectMeta{
-			Name:   "github",
-		}
-		createdConfig, err := g.githubConfigClient.Create(config)
+		logrus.Debugf("createNew githubConfig")
+		_, err := g.githubConfigs.Create(config)
 		if err != nil {
 			return err
 		}
 	} else {
-		updatedConfig, err := g.githubConfigClient.Update(config)
+		logrus.Debugf("updating githubConfig")
+		config.ObjectMeta.ResourceVersion = storedConfig.ObjectMeta.ResourceVersion
+		_, err := g.githubConfigs.Update(config)
 		if err != nil {
 			return err
-		}		
+		}
 	}
 	return nil
 }
@@ -159,11 +164,11 @@ func (g *GProvider) SearchPrincipals(searchKey string, myToken v3.Token) ([]v3.P
 	if myToken.AuthProvider != g.GetName() {
 		return principals, 0, nil
 	}
-	
+
 	config, err := g.getGithubConfigCR()
 	if err != nil {
 		return principals, 0, nil
-	}	
+	}
 
 	accessToken := myToken.ProviderInfo["access_token"]
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"net/http"
 	"os"
 
@@ -19,6 +20,7 @@ func main() {
 }
 
 func run() error {
+	logrus.SetLevel(logrus.DebugLevel)
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", os.Getenv("KUBECONFIG"))
 	if err != nil {
 		return err

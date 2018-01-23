@@ -13,7 +13,7 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/tomnomnom/linkheader"
 
-	"github.com/rancher/types/apis/management.cattle.io/v3"	
+	"github.com/rancher/types/apis/management.cattle.io/v3"
 )
 
 const (
@@ -28,7 +28,7 @@ type GClient struct {
 }
 
 func (g *GClient) getAccessToken(code string, config *v3.GithubConfig) (string, error) {
-	
+
 	form := url.Values{}
 	form.Add("client_id", config.ClientID)
 	form.Add("client_secret", config.ClientSecret)
@@ -381,7 +381,7 @@ func (g *GClient) getFromGithub(githubAccessToken string, url string) (*http.Res
 func (g *GClient) getURL(endpoint string, config *v3.GithubConfig) string {
 
 	var hostName, apiEndpoint, toReturn string
-	
+
 	if config.Hostname != "" {
 		hostName = config.Scheme + config.Hostname
 		apiEndpoint = config.Scheme + config.Hostname + gheAPI
