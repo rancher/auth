@@ -67,7 +67,15 @@ func clusterTypes(schemas *types.Schemas) *types.Schemas {
 			schema.SubContext = "clusters"
 		}).
 		MustImport(&Version, v3.ClusterEvent{}).
-		MustImport(&Version, v3.ClusterRegistrationToken{})
+		MustImport(&Version, v3.ClusterRegistrationToken{}).
+		MustImportAndCustomize(&Version, v3.Cluster{}, func(schema *types.Schema) {
+			schema.MustCustomizeField("name", func(field types.Field) types.Field {
+				field.Type = "dnsLabel"
+				field.Nullable = true
+				field.Required = false
+				return field
+			})
+		})
 }
 
 func authzTypes(schemas *types.Schemas) *types.Schemas {
@@ -185,6 +193,7 @@ func machineTypes(schemas *types.Schemas) *types.Schemas {
 			}
 		}).
 		MustImport(&Version, v3.MachineTemplate{})
+
 }
 
 func authnTypes(schemas *types.Schemas) *types.Schemas {
@@ -283,7 +292,11 @@ func userTypes(schema *types.Schemas) *types.Schemas {
 
 func globalTypes(schema *types.Schemas) *types.Schemas {
 	return schema.
-		AddMapperForType(&Version, v3.ListenConfig{}, m.DisplayName{}).
+		AddMapperForType(&Version, v3.ListenConfig{},
+			m.DisplayName{},
+			m.Drop{Field: "caKey"},
+			m.Drop{Field: "caCert"},
+		).
 		MustImport(&Version, v3.ListenConfig{}).
 		MustImportAndCustomize(&Version, v3.Setting{}, func(schema *types.Schema) {
 			schema.MustCustomizeField("name", func(f types.Field) types.Field {

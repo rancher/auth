@@ -2,7 +2,6 @@ package subtype
 
 import (
 	"strings"
-	"fmt"
 
 	"github.com/rancher/norman/types"
 	"github.com/rancher/norman/types/convert"
@@ -36,7 +35,6 @@ func (p *Store) Update(apiContext *types.APIContext, schema *types.Schema, data 
 }
 
 func (p *Store) List(apiContext *types.APIContext, schema *types.Schema, opt *types.QueryOptions) ([]map[string]interface{}, error) {
-	fmt.Printf("Called List on type %v, ID: %v", p.subType, apiContext.ID)
 	opt.Conditions = append(opt.Conditions, types.NewConditionFromString("type", types.ModifierEQ, p.subType))
 	return p.Store.List(apiContext, schema, opt)
 }
