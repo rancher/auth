@@ -57,6 +57,10 @@ type ClusterSpec struct {
 	DefaultClusterRoleForProjectMembers  string                         `json:"defaultClusterRoleForProjectMembers,omitempty" norman:"type=reference[roleTemplate]"`
 }
 
+type ImportedConfig struct {
+	KubeConfig string `json:"kubeConfig"`
+}
+
 type K8sServerConfig struct {
 	AdmissionControllers []string `json:"admissionControllers,omitempty"`
 	ServiceNetCIDR       string   `json:"serviceNetCidr,omitempty"`
